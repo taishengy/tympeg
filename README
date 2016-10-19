@@ -1,0 +1,7 @@
+A python3 wrapper for ffmpeg. Focused on scripting video file conversions.
+
+This wrapper helps parse information about media files with ffprobe, and does it's transcoding
+through ffmpeg. Look through the examples file to see what's possible. Don't expect it to be 
+particularily pythonic.
+
+FFMPEG needs to be installed, building itself with non-free codecs is recommended.
