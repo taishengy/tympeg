@@ -1,7 +1,6 @@
 import subprocess
 import json
-from os import path
-from os import remove
+from os import path, remove, makedirs
 from argparse import Namespace
 import warnings
 
@@ -14,6 +13,8 @@ import warnings
     # Print MediaConverter output streams and settings
     # MediaConverter.setArgArray()
     # Format (mkv, webm, mp4, etc)?
+
+    # MediaConverterQueue (Queueing, progress reports, error handling, etc...)
 
 def splitTimeCode(timeCode):
     """ Takes a timecode string and returns the hours, minutes and seconds.
@@ -56,7 +57,31 @@ def concatTimeCode(HH, MM, SS):
     timeCode = HH + ":" + MM + ":" + SS
     return timeCode
 
-def subtractTimeCode(timeCode, subTime):
+def addTimeCodes(timeCode1, timeCode2):
+    """ Adds to timecodes together and returns the sum of them.
+
+    :param timeCode1: string, timecode
+    :param timeCode2: string, timecode
+    :return: string, timecode sum
+    """
+    HH, MM, SS = splitTimeCode(timeCode1)
+    hh, mm, ss = splitTimeCode(timeCode2)
+
+    s = SS + ss
+    m = MM + mm
+    h = HH + hh
+
+    if s > 60:
+        m += 1
+        s = s - 60
+
+    if m > 60:
+        h += 1
+        m = m - 60
+
+    return concatTimeCode(h, m, s)
+
+def subtractTimeCodes(timeCode, subTime):
     """ Subtracts two timecode strings from each other. Returns a timecode. If remaining time is less than one it
         returns '0:00:00.0'
 
@@ -349,6 +374,8 @@ class MediaConverter():
         # Select BitRate
         if isinstance(audioBitrate, int):
             audioSettingsDict.update({'audioBitrate': audioBitrate})
+        elif isinstance(audioBitrate, float):
+            audioSettingsDict.update({'audioBitrate': int(round(audioBitrate))})
         else:
             warnings.warn("Specified audio bitrate not valid or recognized, defaulting to 128 kbit/s")
             self.audioBitrate = 128
@@ -420,13 +447,13 @@ class MediaConverter():
 
         def fastSeek(startTime, endTime):
 
-            fastSeekTime = subtractTimeCode( startTime,'00:00:30')
-            startTime = subtractTimeCode(startTime, fastSeekTime)
-            endTime = subtractTimeCode(endTime, fastSeekTime)
+            fastSeekTime = subtractTimeCodes( startTime,'00:00:30')
+            startTime = subtractTimeCodes(startTime, fastSeekTime)
+            endTime = subtractTimeCodes(endTime, fastSeekTime)
 
             print("Fast Seeking To: " + fastSeekTime + " from " + startTime)
             print("Encoding from " + startTime + " to " + endTime + " after fastSeeking.")
-            print("Encoding " + subtractTimeCode(startTime, endTime) + " of media.")
+            print("Encoding " + subtractTimeCodes(startTime, endTime) + " of media.")
             return fastSeekTime, startTime, endTime
 
         if (startTime != '0') and (endTime != '0'):
@@ -555,6 +582,7 @@ class MediaObject():
         :return:
         """
         self.filePath = filePath
+        self.directory, self.fileName = path.split(self.filePath)
         self.ffprobeOut = ''
 
         # Set by parseStreams()
@@ -567,6 +595,7 @@ class MediaObject():
 
         # Set by parseMetaInfo()
         self.format = {}        # Done
+        self.duration = 0       # Done
         self.codecs = []        # Done
         self.streamTypes = []   # Done
         self.videoCodec = ''    # Done
@@ -764,6 +793,7 @@ class MediaObject():
         ffProbeInfo = json.loads(self.ffprobeOut, object_hook=lambda d: Namespace(**d))
         self.namespaceToDict(ffProbeInfo.format, '', -1, self.format)
         self.bitrate = int(self.format['bit_rate'])
+        self.duration = float(self.format['duration'])
         self.size = int(self.format['size'])
 
         for stream in self.streams:
@@ -786,9 +816,18 @@ class MediaObject():
 
             # Setting self.bitrates[]
             try:
-                bps = self.getValueFromKey('BPS', stream)
+                bps = self.getValueFromKey('bit_rate', stream)
                 if bps is not None:
                     self.bitrates.append(bps)
+                else:
+                    try:
+                        bps = self.getValueFromKey('BPS', stream)
+                        if bps is not None:
+                            self.bitrates.append(bps)
+                    finally:
+                        if bps is None:
+                            self.bitrates.append(0)
+
             except KeyError:
                 print("Bitrate not found in stream " + str(stream['index']))
 

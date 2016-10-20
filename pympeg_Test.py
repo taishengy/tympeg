@@ -1,7 +1,6 @@
 from pympeg import *
 
-filePath = 'C:/Users/taish/Desktop/weaboo shit/New folder/[HorribleSubs] Berserk - 09 [1080p].mkv'
-# filePath = 'C:/Users/taish/Desktop/weaboo shit/New folder/output.mkv'
+filePath = 'C:/Media/Sintel.mkv'
 
 mediaInfo = MediaObject(filePath)
 mediaInfo.run()
@@ -44,7 +43,7 @@ print()
 
 # notAMediaConverter = MediaConverter(mediaInfo, 'breakdisshit')
 
-convSet = MediaConverter(mediaInfo, 'C:\\Users\\taish\\Desktop\\working_test.mkv')
+convSet = MediaConverter(mediaInfo, 'C:/Media/output/working_test.mkv')
 convSet.createVideoStream(0, 'cbr', 'x264', width=480, cbr=300)
 # convSet.createVideoStream(0, videoEncoder='copy', bitrateMode='copy')
 convSet.createAudioStream(1, 'opus', 64)

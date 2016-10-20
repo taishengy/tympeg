@@ -1,4 +1,5 @@
 from pympeg import *
+from os import listdir
 
 ## Tools and Utilities - General scripting tools, finding input streams, using time codes ##
 def toolsAndUtilities():
@@ -9,7 +10,7 @@ def toolsAndUtilities():
     # MediaObject.getStreamsWithValue(key, streamList=)
     # concatTimeCode(HH, MM, SS)
     # splitTimeCode(timeCode)
-    # subtractTimeCode(timeCode, subTime)
+    # subtractTimeCodes(timeCode, subTime)
     # timeCodeToSeconds(timeCode)
     # MBtokb(megabytes)
 
@@ -39,7 +40,7 @@ def toolsAndUtilities():
     print("Hour(s): " + str(HH) + ", Minute(s): " + str(MM) +", Second(s): " + str(SS))
 
     subtraction = '00:45:14.245'
-    remainingTime = subtractTimeCode(timeCode, subtraction)
+    remainingTime = subtractTimeCodes(timeCode, subtraction)
     print('Time remaining after subtracting ' + subtraction + ' is: ' + remainingTime)
 
     duration = timeCodeToSeconds(remainingTime)
@@ -47,7 +48,6 @@ def toolsAndUtilities():
 
     filesize = 4.7 # MB
     print(str(filesize) + " MB is " +str(MBtokb(filesize)) + " kilobits")
-
 
 def toolsAndUtilitiesExplained():
     # Here we'll look at some of the tools to help script things.
@@ -89,7 +89,7 @@ def toolsAndUtilitiesExplained():
 
     # Subtract two timecodes
     subtraction = '00:45:14.245'
-    remainingTime = subtractTimeCode(timeCode, subtraction)
+    remainingTime = subtractTimeCodes(timeCode, subtraction)
     print('Time remaining after subtracting ' + subtraction + ' is: ' + remainingTime)
 
     # Find the duration of a timecode in seconds
@@ -169,7 +169,7 @@ def example3():
 
     start   = '00:00:20'
     end     = '00:00:45'
-    duration = timeCodeToSeconds(subtractTimeCode(end, start))
+    duration = timeCodeToSeconds(subtractTimeCodes(end, start))
 
     audioBitrate = 64 # kb/s
     videoStreamSize = fileSize - (audioBitrate * duration)
@@ -177,11 +177,73 @@ def example3():
 
     converter = MediaConverter(mediaInfo, 'C:/Media/output/Sintel_550_net.webm')
     converter.createVideoStream(mediaInfo.videoStreams[0],  'cbr', 'vpx', height=550, cbr=videoBitrate, speed='medium')
-    # converter.createAudioStream(mediaInfo.audioStreams[0], audioEncoder='aac', audioBitrate=audioBitrate)
+    converter.createAudioStream(mediaInfo.audioStreams[0], audioEncoder='aac', audioBitrate=audioBitrate)
 
     converter.clip(start, end)
 
-toolsAndUtilities()
+## Example 4 - Encoding a directory of files to h265 at half the bitrate ##
+def example4():
 
+    # define initial paramenters, make output directory if necessary
+    speed = 'medium'
+    inputDirectory = "C:/Media/Test Files/"
+    outputDirectory = inputDirectory + speed + '/'
+    if not path.exists(outputDirectory):
+        makedirs(outputDirectory)
+
+    # Build list of files in directory, filter by extension
+    fileExtensionsToAnalyze = ['.mp4', '.mkv', '.avi', '.m4v', '.wmv']
+    files = [file for file in listdir(inputDirectory) if (path.splitext(file)[1] in fileExtensionsToAnalyze)
+             and path.isfile(path.join(inputDirectory, file))]
+    print(files)
+    print()
+
+    # Test to make sure video isn't already encoded with h265 (HEVC)
+    filesToConvert = []
+    for file in files:
+        filePath = inputDirectory + file
+        media = MediaObject(filePath)
+        media.run()
+        for videoStream in media.videoStreams:
+            videoCodec = media.videoCodec
+            if (videoCodec != 'h265') and (videoCodec != 'hevc'):
+                filesToConvert.append(media)
+    print("Converting " + str(len(filesToConvert)) + " of " + str(len(files)) + " files.")
+
+    # Start processing files not in h265 already
+    for media in filesToConvert:
+        size = 8 * media.size/1000 # to get kilobits
+        duration = media.duration
+        print(media.fileName + " is " + str(size) + " kilobits and is " + str(duration) + " seconds long.")
+
+        # Estimate half of video bitrate
+        if media.audioStreams == []:
+            desiredVideoBitrate = (size) / (2 * duration)
+            estimatedAudioBitrate = None
+        else:
+            estimatedAudioBitrate = 64.0
+            if media.bitrates[media.audioStreams[0]] != 0:
+                estimatedAudioBitrate = float(media.bitrates[media.audioStreams[0]])/1000
+            desiredVideoBitrate = (size - estimatedAudioBitrate * duration) / (2 * duration)
+        print("Desired video bitrate for " + media.fileName + ": " + str(desiredVideoBitrate) + " kb/s")
+        print()
+
+        # Start building converter
+        outputFilePath = outputDirectory + path.splitext(media.fileName)[0] + '.mkv'
+        converter = MediaConverter(media, outputFilePath)
+
+        converter.createVideoStream(media.videoStreams[0],  'cbr', 'x265', cbr=desiredVideoBitrate, speed=speed)
+        for audio in media.audioStreams:
+            if estimatedAudioBitrate is not None:
+                converter.createAudioStream(audio, audioEncoder='opus', audioBitrate=estimatedAudioBitrate)
+        if media.subtitleStreams != []:
+            converter.createSubtitleStreams(media.subtitleStreams)
+
+        converter.convert()
+
+
+# toolsAndUtilities()
+# example1()
 # example2()
 # example3()
+# example4()
