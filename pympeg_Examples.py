@@ -216,7 +216,7 @@ def example4():
         duration = media.duration
         print(media.fileName + " is " + str(size) + " kilobits and is " + str(duration) + " seconds long.")
 
-        # Estimate half of video bitrate
+        # Estimate half of current video bitrate
         if media.audioStreams == []:
             desiredVideoBitrate = (size) / (2 * duration)
             estimatedAudioBitrate = None

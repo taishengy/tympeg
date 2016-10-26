@@ -58,5 +58,18 @@ convSet.createSubtitleStreams([2])
 # print()
 # convSet.clip(startingTime='00:00:30', endingTime='00:00:45')
 # print()
-convSet.clip('00:15:00', '00:18:30.5')
+# convSet.clip('00:15:00', '00:18:30.5')
 print()
+
+a = []
+a.append('file_name.ext')
+a.append('file_name_1.ext')
+a.append('file_name_01.ext')
+a.append('file_name_32.ext')
+a.append('file_name32.ext')
+a.append('file_name_a.ext')
+a.append('filename.ext')
+
+for name in a:
+    print('Filename ' + name + ' renamed to: ' + renameFile(name))
+

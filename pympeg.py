@@ -6,11 +6,10 @@ import warnings
 
 # todo NEXT:
     # STDIN for ffmpeg errors
-    # Auto rename for files that already exist
-        # Right now it's just deleting the file if it exists, good for testing, bad for scripting
     # ArgArray for vpx
     # Mono for opus/aac, it's a real mess right now
     # Print MediaConverter output streams and settings
+    # MediaConverterQueue, skipping, interrupting, sanity checks?, etc...
     # MediaConverter.setArgArray()
     # Format (mkv, webm, mp4, etc)?
 
@@ -131,6 +130,30 @@ def MBtokb(megabytes):
     kilobytes = megabytes * 8192
     return kilobytes
 
+def renameFile(fileName):
+    """ Renames file to file_X.ext where 'X' is a number. Adds '_X' or increments '_X' if already present
+
+    :param fileName: string, the filename with extension
+    :return: string, renamed file
+    """
+    name, ext = path.splitext(fileName)
+    index = name.rfind('_')
+    number = ''
+
+    for i in range(index + 1, len(name)):
+        character = name[i]
+
+        try:
+            number += str(int(character))
+        except ValueError:
+            name += '_1'
+            break
+
+    if number != '':
+        name = name[0 : index + 1] + str(int(number) + 1)
+
+    fileName = name + ext
+    return fileName
 
 class MediaConverterQueue():
     def __init__(self):
@@ -170,12 +193,14 @@ class MediaConverter():
 
         self.inputFilePath = self.mediaObject.format['filename']
         self.inputFileName = path.basename(self.inputFilePath)
+        dir, fileName = path.split(self.mediaObject.filePath)
         if outputFilePath == '':
-            dir, fileName = path.split(self.mediaObject.filePath)
-            outputFilePath = dir + "/" + "[Py]" + str(fileName)
+            fileName = "/" + "[Py]" + str(fileName)
+            outputFilePath = dir + fileName
 
         if path.isfile(outputFilePath):
-                remove(outputFilePath)
+            fileName = "/" + "[Py]" + renameFile(fileName)
+            outputFilePath = dir + fileName
 
         self.outputFilePath = outputFilePath
 
