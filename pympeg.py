@@ -7,6 +7,7 @@ import warnings
 # todo NEXT:
     # STDIN for ffmpeg errors
     # ArgArray for vpx
+    # Move away from -b:v and -b:a to _b:v:index, etc to enable different bitrates
     # Mono for opus/aac, it's a real mess right now
     # Print MediaConverter output streams and settings
     # MediaConverterQueue, skipping, interrupting, sanity checks?, etc...
