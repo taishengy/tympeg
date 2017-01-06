@@ -1,20 +1,35 @@
+import os
 import subprocess
 import json
-from os import path, remove, makedirs
+from os import path, getcwd, remove, makedirs
 from argparse import Namespace
 import warnings
 
-# todo NEXT:
-    # STDIN for ffmpeg errors
-    # ArgArray for vpx
-    # Move away from -b:v and -b:a to _b:v:index, etc to enable different bitrates
-    # Mono for opus/aac, it's a real mess right now
-    # Print MediaConverter output streams and settings
-    # MediaConverterQueue, skipping, interrupting, sanity checks?, etc...
-    # MediaConverter.setArgArray()
-    # Format (mkv, webm, mp4, etc)?
+# todo Move away from -b:v and -b:a to b:v:index, etc to enable different bitrates per stream
+# todo Create folders if they don't exist, currently ffmpeg just skips the job
+# todo Implement a self.cbr and self.cbr for MediaConverter class to allow encoding quality queries
+# todo createXstream() should be able to handle an array of stream indices (maybe createXStreams()??)
+# todo scaling to height width checking with inHeight/outHeight == inWidth/outWidth and outHeight & outWidth type(int)
+# todo addTimeCodes and subtractTimeCodes() need 'while number > 60' control flow for carrying digits
+# todo should timeCode functions check for decimals in HH and MM sections? need to throw error or write math for them
+# todo MediaConverter.setArgArray()
+# todo all subtitles are 'copy' encoded during conversion
+# todo renaming files doesn't work? Found the problem, in __init__ logic of MediaConverter
 
-    # MediaConverterQueue (Queueing, progress reports, error handling, etc...)
+# todo ArgArray for vpx (cbr, crf, AND vbr)
+# todo estimateVideoBitrate(MediaObject, audioBitrate=128, otherBitrates=0)
+# todo Add other audio encoders (lamemp3, fdk-aac, flac)
+# todo implement ISO-693x for language dictionaries?
+# todo STDIN for ffmpeg errors
+# todo Print MediaConverter output streams and settings
+
+# todo Mono for opus/aac, it's a real mess right now BECAUSE OF THE BUG DESCRIBED BELOW
+# todo opus downmixing to stereo: https://trac.ffmpeg.org/ticket/5718
+
+# todo Longterm - MediaStream objects instead of passing around indexes and stuff
+# todo MediaConverterQueue (Queueing, progress reports, error handling, etc...)
+# todo MediaConverterQueue, skipping, interrupting, sanity checks?, etc...
+
 
 def splitTimeCode(timeCode):
     """ Takes a timecode string and returns the hours, minutes and seconds.
@@ -156,9 +171,72 @@ def renameFile(fileName):
     fileName = name + ext
     return fileName
 
+def ffConcat(mediaObjectArray, outputFilepath):
+    """
+
+    :param mediaObjectArray: Array of mediaObjects in order of concatenation
+    :param outputFilepath: String, output file path
+    :return: subprocess completion data
+    """
+    # check and verify all items in array are MediaObjects
+    # if not, print an error and return
+    for items in mediaObjectArray:
+        if type(items) is not MediaObject:
+            print("ffConcat needs an array of mediaObject. Item in index " + str(mediaObjectArray.index(items)) +
+                  " in the passed array is type '" + str(type(items)) + "'!")
+            print()
+            print("Aborting pymeg.ffConcat()")
+            print()
+            return
+
+    # write the temporary list.txt of inputs that the ffmpeg concat demuxer wants
+    listFileName = str(os.getcwd()) + "\\tempFfConcat.txt"
+    with open(listFileName, 'w') as file:
+        for items in mediaObjectArray:
+            print(str(items.filePath))
+            file.write('file ' + "\'"+ str(items.filePath) + "\'" + '\n')
+
+    # build "ffmpeg concat" string
+    # assume all files are same codec/resoultion/params, otherwise ffmpeg will throw it's own error
+    ffmpegConcatStr = 'ffmpeg -f concat -safe 0 -i "' + listFileName + '" -c copy ' + outputFilepath
+
+    # subprocess "ffmpeg concat"
+    try:
+        processData = subprocess.run(ffmpegConcatStr, check=True)
+    except subprocess.CalledProcessError as cpe:
+        print("Error: CalledProcess in pympeg.ffConcat()")
+        print("CalledProcessError: " + str(cpe))
+    finally:
+        os.remove(listFileName)
+
+    return processData
+
+def makeMediaObjectsInDirectory(directory, selector=None):
+
+    def conditionDirectoryString(directoryString):
+        if type(directoryString) is not str:
+            print("That's not a string that points to a directory, is type " + str(type(directoryString)))
+            return
+        if directoryString.endswith("/"):
+            return directoryString
+        else:
+            return directoryString + "/"
+
+    directory = conditionDirectoryString(directory)
+    mediaObjectArray = []
+    fileExtensions = ['.mp4', '.mkv', '.avi', '.m4v', '.wmv', '.webm', '.flv', '.mov', '.mpg', '.mpeg', '.ogg', '.ogv']
+    for fileNames in os.listdir(directory):
+        if any(extensions in fileNames for extensions in fileExtensions):
+            mediaInfo = MediaObject(directory + fileNames)
+            mediaInfo.run()
+            mediaObjectArray.append(mediaInfo)
+
+    return mediaObjectArray
+
 class MediaConverterQueue():
-    def __init__(self):
+    def __init__(self, logDirectory):
         self.jobList = []
+        self.logDirectory = logDirectory
 
     def addJob(self, job):
         self.jobList.append(job)
@@ -177,6 +255,12 @@ class MediaConverterQueue():
     def jobCanceled(self):
         print("Job canceled.")
 
+    def writeToLog(self, logText):
+        pass
+
+    def openLog(self):
+        pass
+
 class MediaConverter():
     """ Holds settings that get turned into an arg array for ffmpeg conversion
     """
@@ -185,8 +269,6 @@ class MediaConverter():
 
         :param mediaObject:  ConversionSettings
         :param outputFilePath: string
-        :param startTime: string
-        :param endTime:   string
         :return:
         """
         # general conversion settings
@@ -195,13 +277,15 @@ class MediaConverter():
         self.inputFilePath = self.mediaObject.format['filename']
         self.inputFileName = path.basename(self.inputFilePath)
         dir, fileName = path.split(self.mediaObject.filePath)
+
+        # todo FIX RENAMING LOGIC HERE! FILE IS ONLY RENAMED IF outputFilePath IS NOT SPECIFIED
         if outputFilePath == '':
             fileName = "/" + "[Py]" + str(fileName)
             outputFilePath = dir + fileName
-
-        if path.isfile(outputFilePath):
-            fileName = "/" + "[Py]" + renameFile(fileName)
-            outputFilePath = dir + fileName
+        else:
+            if path.isfile(outputFilePath):
+                fileName = renameFile(fileName)
+                outputFilePath = dir + fileName
 
         self.outputFilePath = outputFilePath
 
@@ -231,7 +315,7 @@ class MediaConverter():
         self.convert()
 
     def createVideoStream(self, videoStream, bitrateMode, videoEncoder, width=-1, height=-1,
-                            cbr=-1, crf=-1, speed='', lossless=False, faststart=True):
+                            cbr=-1, crf=-1, speed=''):
         """Populates the ConversionSettings object with information on how to transcode video.
 
         :param videoStreamIndex: int
@@ -240,9 +324,8 @@ class MediaConverter():
         :param width: int, x resolution
         :param height: int, y resolution
         :param cbr: int, bitrate in bits/second
-        :param crf: constant rate factor between 0-50::lossless-lossy
+        :param crf: int, constant rate factor between 0-50::lossless-lossy
         :param speed: string, x264 and x265 speed settings, see speedTypes[]
-        :param lossless: boolean, not yet implemented
         :return:
         """
         # todo allow encoding multiple videostreams at different resolutions/rates/modes/codecs
@@ -306,7 +389,7 @@ class MediaConverter():
         elif bitrateMode == 'crf':
             videoSettingsDict.update({'bitrateMode': bitrateMode})
 
-            if self.crf == -1:
+            if crf == -1:
                 raise ValueError("No desired rate factor specified with constant rate factor encoding selected. Please"
                                  " specify a rate factor with createVideoSetting(... crf= ...)")
             if not (isinstance(crf, float) or isinstance(crf, int)) or crf < 0 or crf > 49:
@@ -557,7 +640,13 @@ class MediaConverter():
 
                 if stream['audioChannels'] == 'abx':
                     if stream['audioEncoder'] == 'opus':
-                        addArgsToArray('-c:a ' + str(ffAudioEncoderNames[stream['audioEncoder']] + ' -ac 1'), self.argsArray)
+                        # if None:
+                        addArgsToArray('-c:a ' + str(ffAudioEncoderNames[stream['audioEncoder']]), self.argsArray)
+
+                        # if stereo:
+                        # addArgsToArray('-c:a ' + str(ffAudioEncoderNames[stream['audioEncoder']] + ' -ac 1'), self.argsArray)
+                        # if mono:
+                        #   addArgsToArray('-c:a ' + str(ffAudioEncoderNames[stream['audioEncoder']] + ' -ac 1'), self.argsArray)
                         addArgsToArray('-b:a ' + str(stream['audioBitrate']) + 'k ', self.argsArray)
 
                     # addArgsToArray('-filter_complex', self.argsArray)
@@ -581,7 +670,8 @@ class MediaConverter():
         print("Conversion argArray after audio stream(s): " + str(self.argsArray))
 
         for stream in self.subtitleStreams:
-            addArgsToArray('-c:s ass', self.argsArray)
+            # if self.mediaObject.subtitleStreamTypes[stream]
+            addArgsToArray('-c:s copy', self.argsArray)
 
         print("Conversion argArray after subtitle stream(s): " + str(self.argsArray))
 
@@ -610,6 +700,7 @@ class MediaObject():
         self.filePath = filePath
         self.directory, self.fileName = path.split(self.filePath)
         self.ffprobeOut = ''
+        self.fileIsValid = True
 
         # Set by parseStreams()
         self.streams = []
@@ -645,10 +736,15 @@ class MediaObject():
         try:
             self.ffprobeOut = subprocess.check_output(argsArray).decode("utf-8")
         except subprocess.CalledProcessError as cpe:
-            print(cpe.output)
+            warnings.warn("CalledProcessError with " + self.filePath + " in MediaObject.run()."
+                                                                       " File is likely malformed or invalid.")
+            print("CalledProcessError: " + str(cpe))
+            print()
+            self.fileIsValid = False
 
-        self.parseStreams()
-        self.parseMetaInfo()
+        if self.fileIsValid:
+            self.parseStreams()
+            self.parseMetaInfo()
 
     def parseStreams(self):
         """ Turns the ffprobe json stream output into nested dictionaries stored as a list at self.streams[{}]. Sorts
@@ -828,28 +924,28 @@ class MediaObject():
             try:
                 self.codecs.append(stream['codec_name'])
             except KeyError:
-                print("codec_name not found in stream " + stream['index'])
-                print("   codecs[" + stream['index'] + "] set to 'unknown'.")
+                print("codec_name not found in stream " + str(stream['index']))
+                print("     codecs[" + str(stream['index']) + "] set to 'unknown'.")
                 self.streamTypes.append('unknown')
 
             # Setting self.streamTypes[]
             try:
                 self.streamTypes.append(stream['codec_type'])
             except KeyError:
-                print("codec_type not found in stream " + stream['index'])
-                print("   streamTypes[" + stream['index'] + "] set to 'unknown'.")
+                print("codec_type not found in stream " + str(stream['index']))
+                print("     streamTypes[" + str(stream['index']) + "] set to 'unknown'.")
                 self.streamTypes.append('unknown')
 
             # Setting self.bitrates[]
             try:
                 bps = self.getValueFromKey('bit_rate', stream)
                 if bps is not None:
-                    self.bitrates.append(bps)
+                    self.bitrates.append(int(bps))
                 else:
                     try:
                         bps = self.getValueFromKey('BPS', stream)
                         if bps is not None:
-                            self.bitrates.append(bps)
+                            self.bitrates.append(int(bps))
                     finally:
                         if bps is None:
                             self.bitrates.append(0)
