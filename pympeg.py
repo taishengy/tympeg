@@ -6,7 +6,6 @@ from argparse import Namespace
 import warnings
 
 # todo Move away from -b:v and -b:a to b:v:index, etc to enable different bitrates per stream
-# todo Create folders if they don't exist, currently ffmpeg just skips the job
 # todo Implement a self.cbr and self.cbr for MediaConverter class to allow encoding quality queries
 # todo createXstream() should be able to handle an array of stream indices (maybe createXStreams()??)
 # todo scaling to height width checking with inHeight/outHeight == inWidth/outWidth and outHeight & outWidth type(int)
@@ -17,7 +16,6 @@ import warnings
 # todo renaming files doesn't work? Found the problem, in __init__ logic of MediaConverter
 
 # todo ArgArray for vpx (cbr, crf, AND vbr)
-# todo estimateVideoBitrate(MediaObject, audioBitrate=128, otherBitrates=0)
 # todo Add other audio encoders (lamemp3, fdk-aac, flac)
 # todo implement ISO-693x for language dictionaries?
 # todo STDIN for ffmpeg errors
