@@ -13,7 +13,7 @@ import warnings
 # todo addTimeCodes and subtractTimeCodes() need 'while number > 60' control flow for carrying digits
 # todo should timeCode functions check for decimals in HH and MM sections? need to throw error or write math for them
 # todo MediaConverter.setArgArray()
-# todo all subtitles are 'copy' encoded during conversion
+# todo all subtitles are currently 'copy' encoded during conversion
 # todo renaming files doesn't work? Found the problem, in __init__ logic of MediaConverter
 
 # todo ArgArray for vpx (cbr, crf, AND vbr)
@@ -26,7 +26,8 @@ import warnings
 # todo Mono for opus/aac, it's a real mess right now BECAUSE OF THE BUG DESCRIBED BELOW
 # todo opus downmixing to stereo: https://trac.ffmpeg.org/ticket/5718
 
-# todo Longterm - MediaStream objects instead of passing around indexes and stuff
+# todo Longterm
+# todo MediaStream objects instead of passing around indexes and stuff
 # todo MediaConverterQueue (Queueing, progress reports, error handling, etc...)
 # todo MediaConverterQueue, skipping, interrupting, sanity checks?, etc...
 
@@ -96,7 +97,7 @@ def addTimeCodes(timeCode1, timeCode2):
 
     return concatTimeCode(h, m, s)
 
-def subtractTimeCodes(timeCode, subTime):
+def subtractTimeCodes(startTime, endTime):
     """ Subtracts two timecode strings from each other. Returns a timecode. If remaining time is less than one it
         returns '0:00:00.0'
 
@@ -104,8 +105,8 @@ def subtractTimeCodes(timeCode, subTime):
     :param subTime: String of a  timecode that will be subtracting.
     :return: String of a timecode that is the remaining time.
     """
-    HH, MM, SS = splitTimeCode(timeCode)
-    hh, mm, ss = splitTimeCode(subTime)
+    HH, MM, SS = splitTimeCode(endTime)
+    hh, mm, ss = splitTimeCode(startTime)
 
     s = SS - ss
     m = MM - mm
@@ -225,8 +226,10 @@ def makeMediaObjectsInDirectory(directory, selector=None):
     directory = conditionDirectoryString(directory)
     mediaObjectArray = []
     fileExtensions = ['.mp4', '.mkv', '.avi', '.m4v', '.wmv', '.webm', '.flv', '.mov', '.mpg', '.mpeg', '.ogg', '.ogv']
+
     for fileNames in os.listdir(directory):
         if any(extensions in fileNames for extensions in fileExtensions):
+            print(fileNames)
             mediaInfo = MediaObject(directory + fileNames)
             mediaInfo.run()
             mediaObjectArray.append(mediaInfo)
@@ -304,8 +307,15 @@ class MediaConverter():
         self.argsArray = ['ffmpeg']
 
     def convert(self):
+        # generate argsArray if not already done
         if self.argsArray == ['ffmpeg']:
             self.generateArgsArray()
+
+        # Make sure the target directory exists!
+        outputDirectory, outputFilename = path.split(self.outputFilePath)
+        if not os.path.isdir(outputDirectory):
+            os.mkdir(outputDirectory)
+
         subprocess.run(self.argsArray)
 
     def clip(self, startingTime, endingTime):
@@ -678,6 +688,25 @@ class MediaConverter():
         self.argsArray.append(self.outputFilePath)
         print("Conversion argArray after output file: " + str(self.argsArray))
 
+    def estimateVideoBitrate(self, targetFileSize, startTime=-1, endTime=-1, audioBitrate=-1, otherBitrates=0):
+
+        if startTime == -1 and endTime == -1:
+            duration = timeCodeToSeconds(self.mediaObject.duration)
+        else:
+            duration = timeCodeToSeconds(subtractTimeCodes(startTime, endTime))
+
+        if audioBitrate == -1:
+            if self.audioStreams != []:
+                audioBitrate = 0
+                for audioStream in self.audioStreams:
+                    audioBitrate += (audioStream['audioBitrate'])
+            else:
+                audioBitrate = 128
+                print("No audioBitrate specified for estimation, defaulting to 128kbit/s")
+
+        estimatedBitrate = targetFileSize/duration - (audioBitrate + otherBitrates)
+
+        return estimatedBitrate
 
     def createAttachementSettings(self, mediaObject):
         pass
@@ -743,6 +772,7 @@ class MediaObject():
             self.fileIsValid = False
 
         if self.fileIsValid:
+            print("Created MediaObject of: " + str(self.filePath))
             self.parseStreams()
             self.parseMetaInfo()
 
@@ -761,8 +791,6 @@ class MediaObject():
             self.streams.append(streamDict)
             self.namespaceToDict(stream, '', -1, self.streams[i])
             i += 1
-
-        print(self.filePath)
 
         for stream in self.streams:
 
