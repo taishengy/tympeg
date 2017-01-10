@@ -322,35 +322,116 @@ class MediaConverter():
 
         self.convert()
 
-    def createVideoStream(self, videoStream, bitrateMode, videoEncoder, width=-1, height=-1,
-                            cbr=-1, crf=-1, speed=''):
-        """Populates the ConversionSettings object with information on how to transcode video.
+    def createVideoStream(self, videoEncoder, rateControlMethod, rateParam, speed='',
+                          width=-1, height=-1, videoStream=-1):
+        """
 
-        :param videoStreamIndex: int
-        :param bitrateMode: string, either cbr or crf
-        :param videoEncoder: string, see supportedEncoders[]
-        :param width: int, x resolution
-        :param height: int, y resolution
-        :param cbr: int, bitrate in bits/second
-        :param crf: int, constant rate factor between 0-50::lossless-lossy
-        :param speed: string, x264 and x265 speed settings, see speedTypes[]
+        :param videoEncoder: string, encoder used. Currently 'x264', 'x265', 'vpx', 'copy' are supported
+        :param rateControlMethod: string, rate control method to be used by the encoder
+        :param rateParam: int, interpreted as bitrate or constant rate factor, depending on rateControlMethod
+        :param speed: string, speed used to encode video in x26X family of encoders
+        :param width: int, width to scale to
+        :param height: int, height to scale to
+        :param videoStream: int, manually specify a stream if mediaObject has multiple video streams.
         :return:
         """
+
         # todo allow encoding multiple videostreams at different resolutions/rates/modes/codecs
         # todo implement lossless=True, changes lots of stuff up
+
+        def buildvpxStream(videoSettingsDict, rateControlMethod, rateConstant):
+            """
+
+            :param rateControlMethod: string, vbr, cbr, crf
+            :param rateConstant: int, either a bitrate (vbr, cbr), or a rate constant (crf)
+            :return:
+            """
+            pass
+
+        def buildx26XStream(videoSettingsDict, rateControlMethod, rateConstant, speed):
+            """
+
+            :param rateControlMethod: string, cbr, crf
+            :param rateConstant: int, either a bitrate (cbr), or a rate constant (crf)
+            :return:
+            """
+
+            # cbr or crf, set values
+            if rateControlMethod == 'cbr':
+                videoSettingsDict.update({'bitrateMode': rateControlMethod})
+
+                if rateConstant == -1:
+                    raise ValueError("No desired bitrate specified with constant bitrate encoding selected. Please"
+                                     " specify a bitrate in createVideoSetting(... rateConstant= ...)")
+
+                if isinstance(rateConstant, float):
+                    rateConstant = int(round(rateConstant))
+
+                elif not isinstance(rateConstant, int):
+                    raise ValueError("'rateConstant' parameter not understood. Desired bitrate should be float or int.")
+
+                videoSettingsDict.update({'rateConstant': rateConstant})
+
+            elif rateControlMethod == 'crf':
+                videoSettingsDict.update({'bitrateMode': rateControlMethod})
+
+                if rateConstant == -1:
+                    raise ValueError("No desired rate factor specified with constant rate factor encoding selected. Please"
+                                     " specify a rate factor with createVideoSetting(... rateConstant= ...)")
+
+                if not (isinstance(rateConstant, float) or isinstance(rateConstant, int)) or rateConstant < 0 or rateConstant > 51:
+                    raise ValueError("'rateConstant' parameter not understood. Constant Rate Factor must "
+                                     "be an integer between 0 and 51")
+
+                if isinstance(rateConstant, float):
+                    rateConstant = int(round(rateConstant))
+
+                videoSettingsDict.update({'rateConstant': rateConstant})
+
+            else:
+                raise ValueError("No rate control method indicated. Please specify"
+                                 " createVideoStream(bitRateMode= rateConstant OR rateConstant) and a rate control target")
+
+            speedTypes = ['placebo', 'veryslow', 'slower', 'slow', 'medium', 'fast', 'faster',
+                          'veryfast', 'superfast', 'ultrafast']
+
+            if speed == '':
+                videoSettingsDict.update({'speed': speedTypes[9]})
+                warnings.warn("No speed specified, default encoding speed set to: " + videoSettingsDict['speed'])
+            elif speed in speedTypes:
+                videoSettingsDict.update({'speed': speed})
+            else:
+                ValueError("Speed type: " + speed + " is not supported. Currently supported encoders are: " +
+                           str(speedTypes))
+
+        def buildCopyStream():
+            """
+
+            :param rateControlMethod: string, vbr, cbr, crf
+            :param rateConstant: int, either a bitrate (vbr, cbr), or a rate constant (crf)
+            :return:
+            """
+            pass
 
         videoSettingsDict = {}
 
         # Video Stream selection
+        # default to first videoStream in file
+        if videoStream == -1:
+            videoStream = self.mediaObject.videoStreams[0]
+
+        # Verify that stream contains video
         if isinstance(videoStream, int):
             if self.mediaObject.streams[videoStream]['codec_type'] == 'video':
-                    videoSettingsDict.update({'videoStream': videoStream})
+                videoSettingsDict.update({'videoStream': videoStream})
             else:
                 warnings.warn("Stream " + str(videoStream) + " is not a video stream. Defaulting to first video stream"
                                                              "in MediaObject.")
                 videoSettingsDict.update({'videoStream': self.mediaObject.videoStreams[0]})
+
         elif videoStream is None:
             warnings.warn("No video requested.")
+
         else:
             warnings.warn("Video stream specified not understood, won't be included.")
             return
@@ -362,68 +443,29 @@ class MediaConverter():
         else:
             ValueError(videoEncoder + " is not supported. Currently supported encoders are: " + str(supportedEncoders))
 
+        if videoEncoder == 'x264' or 'x265':
+            buildx26XStream(videoSettingsDict, rateControlMethod, rateParam, speed)
+        elif videoEncoder == 'vpx':
+            buildvpxStream(videoSettingsDict, rateControlMethod, rateParam)
+        elif videoEncoder == 'copy':
+            buildCopyStream()
+        else:
+            print("Video encoder parameter not understood in MediaConverter.createVideoStream().")
+            print("Supported encoder parameters are: " + str(supportedEncoders))
+
         # Set resolution from parameter, default same resolution as source
         if (width == -1 and height == -1) or videoEncoder == 'copy':
-            # get resolution from self.mediaObject
             videoSettingsDict.update(
                 {'width': int(self.mediaObject.streams[self.mediaObject.videoStreams[videoStream]]['width'])})
             videoSettingsDict.update(
                 {'height': int(self.mediaObject.streams[self.mediaObject.videoStreams[videoStream]]['height'])})
-
         else:  # Set by parameters
             videoSettingsDict.update({'width': int(width)})
             videoSettingsDict.update({'height': int(height)})
 
-        if videoEncoder == 'copy':
-            self.videoStreams.append(videoSettingsDict)
-            self.printVideoSettings()
-            return
-
-        # cbr or crf, set values
-        if bitrateMode == 'cbr':
-            videoSettingsDict.update({'bitrateMode': bitrateMode})
-
-            if cbr == -1:
-                raise ValueError("No desired bitrate specified with constant bitrate encoding selected. Please"
-                                 " specify a bitrate in createVideoSetting(... cbr= ...)")
-
-            if isinstance(cbr, float):
-                cbr = int(round(cbr))
-            elif not isinstance(cbr, int):
-                raise ValueError("'cbr' parameter not understood. Desired bitrate should be float or int.")
-
-            videoSettingsDict.update({'cbr': cbr})
-
-        elif bitrateMode == 'crf':
-            videoSettingsDict.update({'bitrateMode': bitrateMode})
-
-            if crf == -1:
-                raise ValueError("No desired rate factor specified with constant rate factor encoding selected. Please"
-                                 " specify a rate factor with createVideoSetting(... crf= ...)")
-            if not (isinstance(crf, float) or isinstance(crf, int)) or crf < 0 or crf > 49:
-                raise ValueError("'crf' parameter not understood. Constant Rate Factor must "
-                                 "be an integer between 0 and 49")
-            if isinstance(crf, float):
-                crf = int(round(crf))
-            videoSettingsDict.update({'crf': crf})
-
-        else:
-            raise ValueError("No rate control method indicated. Please specify"
-                             " createVideoStream(bitRateMode= cbr OR crf) and a rate control target")
-
-        speedTypes = ['placebo', 'veryslow', 'slower', 'slow', 'medium', 'fast', 'faster',
-                      'veryfast', 'superfast', 'ultrafast']
-        if speed == '':
-            videoSettingsDict.update({'speed': speedTypes[9]})
-            warnings.warn("No speed specified, default encoding speed set to: " + videoSettingsDict['speed'])
-        elif speed in speedTypes:
-            videoSettingsDict.update({'speed': speed})
-        else:
-            ValueError("Speed type: " + speed + " is not supported. Currently supported encoders are: " +
-                       str(speedTypes))
 
         self.videoStreams.append(videoSettingsDict)
-        self.printVideoSettings()
+        # self.printVideoSettings()
 
     def printVideoSettings(self):
         """ Prints the video settings of the ConversionSettings object.
@@ -613,13 +655,18 @@ class MediaConverter():
             if stream['videoEncoder'] == 'copy':
                 addArgsToArray('-c:v copy', self.argsArray)
                 vidStrings.append('-c:v copy')
+
             else:
                 vidString = ' -c:v ' + ffVideoEncoderNames[stream['videoEncoder']]
 
                 if stream['bitrateMode'] == 'cbr':
-                    vidString += ' -b:v ' + str(stream['cbr']) + 'k'
+                    vidString += ' -b:v ' + str(stream['rateConstant']) + 'k'
                 elif stream['bitrateMode'] == 'crf':
-                    vidString += ' -crf ' + str(stream['crf'])
+                    vidString += ' -crf ' + str(stream['rateConstant'])
+                elif stream['bitrateMode'] == 'vbr': # todo Check out ffmpeg's vp8 encoding guide, add that stuff
+                    vidString += ' -b:v ' + str(stream['rateConstant']) + 'k'
+                else:
+                    warnings.warn("'bitrateMode' not understood in generateArgsArray. Should be 'cbr', 'vbr', 'crf'.")
 
                 vidString += ' -vf scale=' + str(stream['width']) + ":" + str(stream['height'])
 
@@ -628,7 +675,7 @@ class MediaConverter():
                 addArgsToArray(vidString, self.argsArray)
                 vidStrings.append(vidString)
 
-            print('Video stream ' + str(stream['videoStream']) + ' ffmpeg arguments:' + str(vidStrings[-1]))
+            # print('Video stream ' + str(stream['videoStream']) + ' ffmpeg arguments:' + str(vidStrings[-1]))
 
         print("Conversion argArray after video stream(s): " + str(self.argsArray))
 
