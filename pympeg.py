@@ -145,29 +145,40 @@ def MBtokb(megabytes):
     kilobytes = megabytes * 8192
     return kilobytes
 
-def renameFile(fileName):
+def renameFile(filepath):
     """ Renames file to file_X.ext where 'X' is a number. Adds '_X' or increments '_X' if already present
 
     :param fileName: string, the filename with extension
     :return: string, renamed file
     """
+    inDir, fileName = path.split(filepath)
+    #
+    # print()
+    # print(inDir)
+    # print(fileName)
+
     name, ext = path.splitext(fileName)
+    print("name: " + name)
     index = name.rfind('_')
-    number = ''
+    number = 1
 
-    for i in range(index + 1, len(name)):
-        character = name[i]
-
-        try:
-            number += str(int(character))
-        except ValueError:
+    if path.isfile(filepath):
+        if index == -1 or len(name) > index + 2:
             name += '_1'
-            break
+            index = name.rfind('_')
 
-    if number != '':
-        name = name[0 : index + 1] + str(int(number) + 1)
+    while path.isfile(filepath):
+        # split number from name
+        number = int(name[index + 1:])
+        print("Number: " + str(number))
+        name = name[:index + 1]
+        print(name)
 
-    fileName = name + ext
+        # increment number, add back to name
+        name = name + str(number + 1)
+        fileName = name + ext
+        filepath = path.join(inDir, fileName)
+
     return fileName
 
 def ffConcat(mediaObjectArray, outputFilepath):
@@ -275,18 +286,27 @@ class MediaConverter():
         # general conversion settings
         self.mediaObject = mediaObject
 
+        # parse MediaObject if it hasn't been done
+        if self.mediaObject.streams == []:
+            self.mediaObject.run()
+
         self.inputFilePath = self.mediaObject.format['filename']
         self.inputFileName = path.basename(self.inputFilePath)
-        dir, fileName = path.split(self.mediaObject.filePath)
+        inDir, inFileName = path.split(self.mediaObject.filePath)
+        outDir, outFileName = path.split(outputFilePath)
+        print(inDir)
+        print(inFileName)
+        print(outDir)
+        print(outFileName)
 
-        # todo FIX RENAMING LOGIC HERE! FILE IS ONLY RENAMED IF outputFilePath IS NOT SPECIFIED
+        #renaming logic
         if outputFilePath == '':
-            fileName = "/" + "[Py]" + str(fileName)
-            outputFilePath = dir + fileName
-        else:
-            if path.isfile(outputFilePath):
-                fileName = renameFile(fileName)
-                outputFilePath = dir + fileName
+            outputFilePath = path.join(inDir, renameFile(self.mediaObject.filePath))
+
+        else:  # if path.isfile(outputFilePath):
+            outFileName = renameFile(path.join(outDir, outFileName))
+            print("outFileName: " + outFileName)
+            outputFilePath = path.join(outDir, outFileName)
 
         self.outputFilePath = outputFilePath
 
