@@ -463,7 +463,7 @@ class MediaConverter():
             videoSettingsDict.update({'width': int(width)})
             videoSettingsDict.update({'height': int(height)})
 
-
+        videoSettingsDict.update({'index': int(videoStream)})
         self.videoStreams.append(videoSettingsDict)
         # self.printVideoSettings()
 
@@ -544,6 +544,7 @@ class MediaConverter():
             audioSettingsDict.update({'audioChannels': audioChannels})
             #todo implement channels (stereo, mono, 5.1, etc...)
 
+        audioSettingsDict.update({'index': int(audioStream)})
         self.audioStreams.append(audioSettingsDict)
         self.printAudioSetting()
 
@@ -552,6 +553,7 @@ class MediaConverter():
 
         :return:
         """
+        streamIndex = 0
         print('---- AUDIO SETTINGS ----')
         for stream in self.audioStreams:
             print('Stream: ' + str(stream['audioStream']))
@@ -566,7 +568,13 @@ class MediaConverter():
         :param subtitleStreams:
         :return:
         """
-        self.subtitleStreams = subtitleStreams
+
+
+        for streams in subtitleStreams:
+            subtitleSettings = {}
+            subtitleSettings.update({'index': int(streams)})
+            self.subtitleStreams.append(subtitleSettings)
+
 
     def generateArgsArray(self, startTime='0', endTime='0'):
         """ Generates the argArray to feed ffmpeg. Generates from the output stream information provided in the
@@ -576,20 +584,18 @@ class MediaConverter():
         :param endTime: String, input end time for encoding in format HH:MM:SS.SS
         :return:
         """
-        def mapStreamsByType(someStreams, streamCount, fileIndex, argsArray):
+        def mapStreamsByType(someStreams, fileIndex, argsArray):
             """ Writes the -map stream to the argArray. Look at how it's called below.
 
             :param someStreams:
-            :param streamCount:
             :param fileIndex:
             :param argsArray:
             :return:
             """
             for stream in someStreams:
                 argsArray.append('-map')
-                argsArray.append(fileIndex + str(streamCount))
-                streamCount += 1
-            return streamCount
+                argsArray.append(fileIndex + str(stream['index']))
+
 
         def addArgsToArray(newArgs, array):
             """ Ensures proper array index formatting. Splits arg strings into seperate array indexes.
@@ -632,15 +638,11 @@ class MediaConverter():
         addArgsToArray('-v', self.argsArray)
         addArgsToArray('24', self.argsArray)
 
-        streamCount = 0
         fileIndex = '0:'
 
         # -map each stream
-        streamCount = mapStreamsByType(self.videoStreams, streamCount, fileIndex, self.argsArray)
-        streamCount = mapStreamsByType(self.audioStreams, streamCount, fileIndex, self.argsArray)
-        streamCount = mapStreamsByType(self.subtitleStreams, streamCount, fileIndex, self.argsArray)
-        streamCount = mapStreamsByType(self.attachmentStreams, streamCount, fileIndex, self.argsArray)
-        streamCount = mapStreamsByType(self.otherStreams, streamCount, fileIndex, self.argsArray)
+        for streamType in [self.videoStreams, self.audioStreams, self.subtitleStreams, self.attachmentStreams, self.otherStreams]:
+            mapStreamsByType(streamType, fileIndex, self.argsArray)
 
         print("Conversion argArray after stream mapping: " + str(self.argsArray))
 
@@ -652,6 +654,7 @@ class MediaConverter():
                                'copy': 'copy'}
 
         for stream in self.videoStreams:
+            streamIndex = 0
             if stream['videoEncoder'] == 'copy':
                 addArgsToArray('-c:v copy', self.argsArray)
                 vidStrings.append('-c:v copy')
@@ -675,6 +678,7 @@ class MediaConverter():
                 addArgsToArray(vidString, self.argsArray)
                 vidStrings.append(vidString)
 
+            streamIndex += 1
             # print('Video stream ' + str(stream['videoStream']) + ' ffmpeg arguments:' + str(vidStrings[-1]))
 
         print("Conversion argArray after video stream(s): " + str(self.argsArray))
@@ -686,41 +690,55 @@ class MediaConverter():
                                'vorbis': 'libvorbis',
                                'copy': 'copy'}
 
+        streamIndex = 0
         for stream in self.audioStreams:
             if stream['audioEncoder'] == 'copy':
-                addArgsToArray(' -c:a copy', self.argsArray)
-                audioStrings.append(' -c:a copy')
+                fragment = ' -c:a:' + str(streamIndex) + ' copy'
+                addArgsToArray(fragment, self.argsArray)
+                audioStrings.append(fragment)
+
+            elif stream['audioEncoder'] == 'opus':
+                if stream['audioChannels'] == 'mono':
+                    pass # todo opus mono! https://trac.ffmpeg.org/ticket/5718
+                else: # opus stereo
+                    addArgsToArray('-c:a:' + str(streamIndex) + ' ' + str(ffAudioEncoderNames[stream['audioEncoder']]), self.argsArray)
+
+                    addArgsToArray('-b:a:' + str(streamIndex) + ' ' + str(stream['audioBitrate']) + 'k ', self.argsArray)
+                    if stream['audioBitrate'] != 128:
+                        addArgsToArray('-vbr constrained', self.argsArray)
             else:
-                # audioString = '-c:a ' + str(ffAudioEncoderNames[stream['audioEncoder']])
-
-                if stream['audioChannels'] == 'abx':
-                    if stream['audioEncoder'] == 'opus':
-                        # if None:
-                        addArgsToArray('-c:a ' + str(ffAudioEncoderNames[stream['audioEncoder']]), self.argsArray)
-
-                        # if stereo:
-                        # addArgsToArray('-c:a ' + str(ffAudioEncoderNames[stream['audioEncoder']] + ' -ac 1'), self.argsArray)
-                        # if mono:
-                        #   addArgsToArray('-c:a ' + str(ffAudioEncoderNames[stream['audioEncoder']] + ' -ac 1'), self.argsArray)
-                        addArgsToArray('-b:a ' + str(stream['audioBitrate']) + 'k ', self.argsArray)
-
-                    # addArgsToArray('-filter_complex', self.argsArray)
-                    # self.argsArray.append(" [0:" + str(stream['audioStream']) + ".0] [0:" + str(stream['audioStream']) + ".1] amerge ")
-                    # addArgsToArray('-c:a ' + str(ffAudioEncoderNames[stream['audioEncoder']] + ' -ac 1'), self.argsArray)
-                    # addArgsToArray('-b:a ' + str(stream['audioBitrate']) + 'k ', self.argsArray) # + str(stream['audioChannels']), self.argsArray)
-
-                    # audioString += ' -filter_complex pan=1c|c0=0.5*c0+0.5*c1' + ' -ac 1'
-                    # audioString += ' -filter_complex' +  " [0:" + str(stream['audioStream']) + ".0] [0:" + str(stream['audioStream']) + ".1] amerge"
-                    # audioString += ' -filter_complex "[0:' + str(stream['audioStream']) + '.0:a][0:' + str(stream['audioStream'] - 1) + '.1:a]amix" -ac 1'
-
-                else: # stereo
-                    addArgsToArray('-c:a ' + str(ffAudioEncoderNames[stream['audioEncoder']]), self.argsArray)
-
-
-                # audioString += ' -b:a ' + str(stream['audioBitrate']) + 'k ' # + str(stream['audioChannels'])
-
-                    addArgsToArray('-b:a ' + str(stream['audioBitrate']) + 'k ', self.argsArray) # + str(stream['audioChannels']), self.argsArray)
-                # audioStrings.append(audioString)
+                addArgsToArray('-b:a:' + str(streamIndex) + ' ' + str(stream['audioBitrate']) + 'k ', self.argsArray)
+            streamIndex += 1
+                # # audioString = '-c:a ' + str(ffAudioEncoderNames[stream['audioEncoder']])
+                #
+                # if stream['audioChannels'] == 'abx':
+                #     if stream['audioEncoder'] == 'opus':
+                #         # if None:
+                #         addArgsToArray('-c:a ' + str(ffAudioEncoderNames[stream['audioEncoder']]), self.argsArray)
+                #
+                #         # if stereo:
+                #         # addArgsToArray('-c:a ' + str(ffAudioEncoderNames[stream['audioEncoder']] + ' -ac 1'), self.argsArray)
+                #         # if mono:
+                #         #   addArgsToArray('-c:a ' + str(ffAudioEncoderNames[stream['audioEncoder']] + ' -ac 1'), self.argsArray)
+                #         addArgsToArray('-b:a ' + str(stream['audioBitrate']) + 'k ', self.argsArray)
+                #
+                #     # addArgsToArray('-filter_complex', self.argsArray)
+                #     # self.argsArray.append(" [0:" + str(stream['audioStream']) + ".0] [0:" + str(stream['audioStream']) + ".1] amerge ")
+                #     # addArgsToArray('-c:a ' + str(ffAudioEncoderNames[stream['audioEncoder']] + ' -ac 1'), self.argsArray)
+                #     # addArgsToArray('-b:a ' + str(stream['audioBitrate']) + 'k ', self.argsArray) # + str(stream['audioChannels']), self.argsArray)
+                #
+                #     # audioString += ' -filter_complex pan=1c|c0=0.5*c0+0.5*c1' + ' -ac 1'
+                #     # audioString += ' -filter_complex' +  " [0:" + str(stream['audioStream']) + ".0] [0:" + str(stream['audioStream']) + ".1] amerge"
+                #     # audioString += ' -filter_complex "[0:' + str(stream['audioStream']) + '.0:a][0:' + str(stream['audioStream'] - 1) + '.1:a]amix" -ac 1'
+                #
+                # else: # stereo
+                #     addArgsToArray('-c:a ' + str(ffAudioEncoderNames[stream['audioEncoder']]), self.argsArray)
+                #
+                #
+                # # audioString += ' -b:a ' + str(stream['audioBitrate']) + 'k ' # + str(stream['audioChannels'])
+                #
+                #     addArgsToArray('-b:a ' + str(stream['audioBitrate']) + 'k ', self.argsArray) # + str(stream['audioChannels']), self.argsArray)
+                # # audioStrings.append(audioString)
 
         print("Conversion argArray after audio stream(s): " + str(self.argsArray))
 
