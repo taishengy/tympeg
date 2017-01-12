@@ -148,31 +148,30 @@ def MBtokb(megabytes):
 def renameFile(filepath):
     """ Renames file to file_X.ext where 'X' is a number. Adds '_X' or increments '_X' if already present
 
-    :param fileName: string, the filename with extension
+    :param filepath: string, the filepath of the file that could be renamed
     :return: string, renamed file
     """
     inDir, fileName = path.split(filepath)
-    #
-    # print()
-    # print(inDir)
-    # print(fileName)
 
     name, ext = path.splitext(fileName)
     print("name: " + name)
     index = name.rfind('_')
-    number = 1
 
+    # Check if the characters after the last underscore are just numbers
     if path.isfile(filepath):
-        if index == -1 or len(name) > index + 2:
-            name += '_1'
-            index = name.rfind('_')
+        postUnderscore = name[index + 1:]
+        for char in postUnderscore:
+            # If they aren't, set the counter to 0 and append to file name
+            if not char.isdigit():
+                name += '_0'
+                index = name.rfind('_')
+                break
 
+    # Keeps incrementing the number until it creates a new file
     while path.isfile(filepath):
         # split number from name
         number = int(name[index + 1:])
-        print("Number: " + str(number))
         name = name[:index + 1]
-        print(name)
 
         # increment number, add back to name
         name = name + str(number + 1)
