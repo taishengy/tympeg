@@ -6,14 +6,12 @@ from argparse import Namespace
 import warnings
 
 # todo Move away from -b:v and -b:a to b:v:index, etc to enable different bitrates per stream
-# todo Implement a self.cbr and self.cbr for MediaConverter class to allow encoding quality queries
 # todo createXstream() should be able to handle an array of stream indices (maybe createXStreams()??)
 # todo scaling to height width checking with inHeight/outHeight == inWidth/outWidth and outHeight & outWidth type(int)
 # todo addTimeCodes and subtractTimeCodes() need 'while number > 60' control flow for carrying digits
 # todo should timeCode functions check for decimals in HH and MM sections? need to throw error or write math for them
 # todo MediaConverter.setArgArray()
 # todo all subtitles are currently 'copy' encoded during conversion
-# todo renaming files doesn't work? Found the problem, in __init__ logic of MediaConverter
 
 # todo ArgArray for vpx (cbr, crf, AND vbr)
 # todo Add other audio encoders (lamemp3, fdk-aac, flac)
@@ -154,7 +152,6 @@ def renameFile(filepath):
     inDir, fileName = path.split(filepath)
 
     name, ext = path.splitext(fileName)
-    print("name: " + name)
     index = name.rfind('_')
 
     # Check if the characters after the last underscore are just numbers
@@ -174,7 +171,7 @@ def renameFile(filepath):
         name = name[:index + 1]
 
         # increment number, add back to name
-        name = name + str(number + 1)
+        name += str(number + 1)
         fileName = name + ext
         filepath = path.join(inDir, fileName)
 
@@ -275,7 +272,7 @@ class MediaConverterQueue():
 class MediaConverter():
     """ Holds settings that get turned into an arg array for ffmpeg conversion
     """
-    def __init__(self, mediaObject, outputFilePath=''):
+    def __init__(self, mediaObject, outputFilePath='', debug=False):
         """ Generates a ConversionSettings object. Populate fields with createXSettings() Methods.
 
         :param mediaObject:  ConversionSettings
@@ -284,6 +281,7 @@ class MediaConverter():
         """
         # general conversion settings
         self.mediaObject = mediaObject
+        self.debug = debug
 
         # parse MediaObject if it hasn't been done
         if self.mediaObject.streams == []:
@@ -293,10 +291,6 @@ class MediaConverter():
         self.inputFileName = path.basename(self.inputFilePath)
         inDir, inFileName = path.split(self.mediaObject.filePath)
         outDir, outFileName = path.split(outputFilePath)
-        print(inDir)
-        print(inFileName)
-        print(outDir)
-        print(outFileName)
 
         #renaming logic
         if outputFilePath == '':
@@ -304,7 +298,6 @@ class MediaConverter():
 
         else:  # if path.isfile(outputFilePath):
             outFileName = renameFile(path.join(outDir, outFileName))
-            print("outFileName: " + outFileName)
             outputFilePath = path.join(outDir, outFileName)
 
         self.outputFilePath = outputFilePath
@@ -358,14 +351,63 @@ class MediaConverter():
         # todo allow encoding multiple videostreams at different resolutions/rates/modes/codecs
         # todo implement lossless=True, changes lots of stuff up
 
-        def buildvpxStream(videoSettingsDict, rateControlMethod, rateConstant):
+        def buildvpXStream(videoSettingsDict, rateControlMethod, rateConstant):
             """
 
             :param rateControlMethod: string, vbr, cbr, crf
             :param rateConstant: int, either a bitrate (vbr, cbr), or a rate constant (crf)
             :return:
             """
-            pass
+            # cbr or crf, set values
+            if rateControlMethod == 'cbr':
+                videoSettingsDict.update({'bitrateMode': rateControlMethod})
+
+                if rateConstant == -1:
+                    raise ValueError("No desired bitrate specified with constant bitrate encoding selected. Please"
+                                     " specify a bitrate in createVideoSetting(... rateConstant= ...)")
+
+                if isinstance(rateConstant, float):
+                    rateConstant = int(round(rateConstant))
+
+                elif not isinstance(rateConstant, int):
+                    raise ValueError("'rateConstant' parameter not understood. Desired bitrate should be float or int in kbit/s.")
+
+                videoSettingsDict.update({'rateConstant': rateConstant})
+
+            elif rateControlMethod == 'vbr':
+                videoSettingsDict.update({'bitrateMode': rateControlMethod})
+
+                if rateConstant == -1:
+                    raise ValueError("No desired bitrate specified with constant rate factor encoding selected. Please"
+                                     " specify a rate factor with createVideoSetting(... rateConstant= ...)")
+
+                if isinstance(rateConstant, float):
+                    rateConstant = int(round(rateConstant))
+
+                elif not isinstance(rateConstant, int):
+                    raise ValueError("'rateConstant' parameter not understood. Desired bitrate should be float or int in kbit/s.")
+
+                videoSettingsDict.update({'rateConstant': rateConstant})
+
+            elif rateControlMethod == 'crf':
+                videoSettingsDict.update({'bitrateMode': rateControlMethod})
+
+                if rateConstant == -1:
+                    raise ValueError("No desired rate factor specified with constant rate factor encoding selected. Please"
+                                     " specify a rate factor with createVideoSetting(... rateConstant= ...)")
+
+                if not (isinstance(rateConstant, float) or isinstance(rateConstant, int)) or rateConstant < 4 or rateConstant > 63:
+                    raise ValueError("'rateConstant' parameter not understood. Constant Rate Factor must "
+                                     "be an integer between 0 and 51")
+
+                if isinstance(rateConstant, float):
+                    rateConstant = int(round(rateConstant))
+
+                videoSettingsDict.update({'rateConstant': rateConstant})
+
+            else:
+                raise ValueError("No rate control method indicated. Please specify"
+                                 " createVideoStream(bitRateMode= rateConstant OR rateConstant) and a rate control target")
 
         def buildx26XStream(videoSettingsDict, rateControlMethod, rateConstant, speed):
             """
@@ -423,14 +465,14 @@ class MediaConverter():
                 ValueError("Speed type: " + speed + " is not supported. Currently supported encoders are: " +
                            str(speedTypes))
 
-        def buildCopyStream():
+        def buildCopyStream(videosSettingsDict):
             """
 
             :param rateControlMethod: string, vbr, cbr, crf
             :param rateConstant: int, either a bitrate (vbr, cbr), or a rate constant (crf)
             :return:
             """
-            pass
+            videoSettingsDict.update({'videoEncoder': 'copy'})
 
         videoSettingsDict = {}
 
@@ -455,7 +497,7 @@ class MediaConverter():
             warnings.warn("Video stream specified not understood, won't be included.")
             return
 
-        supportedEncoders = ['x264', 'x265', 'vpx', 'copy'] # todo test three encoders
+        supportedEncoders = ['x264', 'x265', 'vp8', 'vp9', 'copy'] # todo test three encoders
 
         if videoEncoder in supportedEncoders:
             videoSettingsDict.update({'videoEncoder': videoEncoder})
@@ -464,8 +506,8 @@ class MediaConverter():
 
         if videoEncoder == 'x264' or 'x265':
             buildx26XStream(videoSettingsDict, rateControlMethod, rateParam, speed)
-        elif videoEncoder == 'vpx':
-            buildvpxStream(videoSettingsDict, rateControlMethod, rateParam)
+        elif videoEncoder == 'vp8' or 'vp9':
+            buildvpXStream(videoSettingsDict, rateControlMethod, rateParam)
         elif videoEncoder == 'copy':
             buildCopyStream()
         else:
@@ -473,18 +515,27 @@ class MediaConverter():
             print("Supported encoder parameters are: " + str(supportedEncoders))
 
         # Set resolution from parameter, default same resolution as source
-        if (width == -1 and height == -1) or videoEncoder == 'copy':
-            videoSettingsDict.update(
-                {'width': int(self.mediaObject.streams[self.mediaObject.videoStreams[videoStream]]['width'])})
-            videoSettingsDict.update(
-                {'height': int(self.mediaObject.streams[self.mediaObject.videoStreams[videoStream]]['height'])})
+        if videoEncoder == 'copy':
+            videoSettingsDict.update({'width': -1})
+            videoSettingsDict.update({'height': -1})
         else:  # Set by parameters
             videoSettingsDict.update({'width': int(width)})
             videoSettingsDict.update({'height': int(height)})
 
+            if self.debug:
+                if (height == -1 or width != -1) or ( height != -1 or width == -1):
+                    if height == -1:
+                        print("Scaling to width of " + str(width) + " pixels.")
+                    else:
+                        print("Scaling to height of " + str(height) + " pixels.")
+                else:
+                    print("Scaling to width of " + str(width) + " and height of " + str(height) + " pixels.")
+
         videoSettingsDict.update({'index': int(videoStream)})
         self.videoStreams.append(videoSettingsDict)
-        # self.printVideoSettings()
+
+        if self.debug:
+            self.printVideoSettings()
 
     def printVideoSettings(self):
         """ Prints the video settings of the ConversionSettings object.
@@ -565,7 +616,7 @@ class MediaConverter():
 
         audioSettingsDict.update({'index': int(audioStream)})
         self.audioStreams.append(audioSettingsDict)
-        self.printAudioSetting()
+        # self.printAudioSetting()
 
     def printAudioSetting(self):
         """ Prints the audio settings of the ConversionSettings object.
@@ -630,14 +681,17 @@ class MediaConverter():
                     array.append(arg)
 
         def fastSeek(startTime, endTime):
+            if timeCodeToSeconds(startTime) < 45:
+                return "00:00:00", "00:00:00", endTime
 
             fastSeekTime = subtractTimeCodes( startTime,'00:00:30')
             startTime = subtractTimeCodes(startTime, fastSeekTime)
             endTime = subtractTimeCodes(endTime, fastSeekTime)
 
-            print("Fast Seeking To: " + fastSeekTime + " from " + startTime)
-            print("Encoding from " + startTime + " to " + endTime + " after fastSeeking.")
-            print("Encoding " + subtractTimeCodes(startTime, endTime) + " of media.")
+            if self.debug:
+                print("Fast Seeking To: " + fastSeekTime + " from " + startTime)
+                print("Encoding from " + startTime + " to " + endTime + " after fastSeeking.")
+                print("Encoding " + subtractTimeCodes(startTime, endTime) + " of media.")
             return fastSeekTime, startTime, endTime
 
         if (startTime != '0') and (endTime != '0'):
@@ -663,13 +717,15 @@ class MediaConverter():
         for streamType in [self.videoStreams, self.audioStreams, self.subtitleStreams, self.attachmentStreams, self.otherStreams]:
             mapStreamsByType(streamType, fileIndex, self.argsArray)
 
-        print("Conversion argArray after stream mapping: " + str(self.argsArray))
+        if self.debug:
+            print("Conversion argArray after stream mapping: " + str(self.argsArray))
 
         # Video Streams and their args
         vidStrings = []
         ffVideoEncoderNames = {'x264': 'libx264',
                                'x265': 'libx265',
-                               'vpx': 'libvpx',
+                               'vp8': 'libvpx',
+                               'vp9': 'libvpx-vp9',
                                'copy': 'copy'}
 
         for stream in self.videoStreams:
@@ -700,11 +756,15 @@ class MediaConverter():
             streamIndex += 1
             # print('Video stream ' + str(stream['videoStream']) + ' ffmpeg arguments:' + str(vidStrings[-1]))
 
-        print("Conversion argArray after video stream(s): " + str(self.argsArray))
+        if self.debug:
+            print("Conversion argArray after video stream(s): " + str(self.argsArray))
 
         # Audio Streams and their args
         audioStrings = []
         ffAudioEncoderNames = {'aac': 'aac',
+                               'fdk': 'libaac_fdk',
+                               'lame': 'libmp3lame',
+                               'flac': 'flac',
                                'opus': 'libopus',
                                'vorbis': 'libvorbis',
                                'copy': 'copy'}
@@ -718,7 +778,14 @@ class MediaConverter():
 
             elif stream['audioEncoder'] == 'opus':
                 if stream['audioChannels'] == 'mono':
-                    pass # todo opus mono! https://trac.ffmpeg.org/ticket/5718
+                    # todo opus mono! https://trac.ffmpeg.org/ticket/5718
+                    addArgsToArray('-c:a:' + str(streamIndex) + ' ' + str(ffAudioEncoderNames[stream['audioEncoder']]) +
+                                   " -af aformat=channel_layouts=mono", self.argsArray)
+
+                    addArgsToArray('-b:a:' + str(streamIndex) + ' ' + str(stream['audioBitrate']) + 'k ', self.argsArray)
+                    if stream['audioBitrate'] != 128:
+                        addArgsToArray('-vbr constrained', self.argsArray)
+
                 else: # opus stereo
                     addArgsToArray('-c:a:' + str(streamIndex) + ' ' + str(ffAudioEncoderNames[stream['audioEncoder']]), self.argsArray)
 
@@ -726,7 +793,9 @@ class MediaConverter():
                     if stream['audioBitrate'] != 128:
                         addArgsToArray('-vbr constrained', self.argsArray)
             else:
+                addArgsToArray('-c:a' + str(streamIndex) + '' + str(ffAudioEncoderNames[stream['audioEncoder']]), self.argsArray)
                 addArgsToArray('-b:a:' + str(streamIndex) + ' ' + str(stream['audioBitrate']) + 'k ', self.argsArray)
+
             streamIndex += 1
                 # # audioString = '-c:a ' + str(ffAudioEncoderNames[stream['audioEncoder']])
                 #
@@ -759,16 +828,20 @@ class MediaConverter():
                 #     addArgsToArray('-b:a ' + str(stream['audioBitrate']) + 'k ', self.argsArray) # + str(stream['audioChannels']), self.argsArray)
                 # # audioStrings.append(audioString)
 
-        print("Conversion argArray after audio stream(s): " + str(self.argsArray))
+        if self.debug:
+            print("Conversion argArray after audio stream(s): " + str(self.argsArray))
 
         for stream in self.subtitleStreams:
             # if self.mediaObject.subtitleStreamTypes[stream]
             addArgsToArray('-c:s copy', self.argsArray)
 
-        print("Conversion argArray after subtitle stream(s): " + str(self.argsArray))
+        if self.debug:
+            print("Conversion argArray after subtitle stream(s): " + str(self.argsArray))
 
         self.argsArray.append(self.outputFilePath)
-        print("Conversion argArray after output file: " + str(self.argsArray))
+
+        if self.debug:
+            print("Conversion argArray after output file: " + str(self.argsArray))
 
     def estimateVideoBitrate(self, targetFileSize, startTime=-1, endTime=-1, audioBitrate=-1, otherBitrates=0):
 
