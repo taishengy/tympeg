@@ -1,7 +1,7 @@
 import os
 import subprocess
 import json
-from os import path, getcwd, remove, makedirs
+from os import path, listdir, remove, makedirs
 from argparse import Namespace
 import warnings
 
@@ -19,8 +19,6 @@ import warnings
 # todo STDIN for ffmpeg errors
 # todo Print MediaConverter output streams and settings
 
-# todo Mono for opus/aac, it's a real mess right now BECAUSE OF THE BUG DESCRIBED BELOW
-# todo opus downmixing to stereo: https://trac.ffmpeg.org/ticket/5718
 
 # todo Longterm
 # todo MediaStream objects instead of passing around indexes and stuff
@@ -134,6 +132,19 @@ def timeCodeToSeconds(timeCode):
 
     return SS
 
+def getDirSize(directoryPath):
+    """
+    Gets the size of files in a folder. Non-recursive, ignores folders.
+    :param directoryPath: string, path of directory to be analyzed
+    :return: int, size of sum of files in directory in bytes
+    """
+    files = [f for f in listdir(directoryPath) if path.isfile(path.join(directoryPath, f))]
+    size = 0
+    for file in files:
+        size += path.getsize(path.join(directoryPath, file))
+    return size
+
+
 def MBtokb(megabytes):
     """ Converts megabytes to kilobits.
 
@@ -204,7 +215,7 @@ def ffConcat(mediaObjectArray, outputFilepath):
 
     # build "ffmpeg concat" string
     # assume all files are same codec/resoultion/params, otherwise ffmpeg will throw it's own error
-    ffmpegConcatStr = 'ffmpeg -f concat -safe 0 -i "' + listFileName + '" -c copy ' + outputFilepath
+    ffmpegConcatStr = 'ffmpeg -f concat -safe 0 -i "' + listFileName + '" -c copy ' + '"' + outputFilepath + '"'
 
     # subprocess "ffmpeg concat"
     try:
@@ -212,6 +223,7 @@ def ffConcat(mediaObjectArray, outputFilepath):
     except subprocess.CalledProcessError as cpe:
         print("Error: CalledProcess in pympeg.ffConcat()")
         print("CalledProcessError: " + str(cpe))
+        processData = None
     finally:
         os.remove(listFileName)
 
@@ -234,7 +246,6 @@ def makeMediaObjectsInDirectory(directory, selector=None):
 
     for fileNames in os.listdir(directory):
         if any(extensions in fileNames for extensions in fileExtensions):
-            print(fileNames)
             mediaInfo = MediaObject(directory + fileNames)
             mediaInfo.run()
             mediaObjectArray.append(mediaInfo)
@@ -504,12 +515,12 @@ class MediaConverter():
         else:
             ValueError(videoEncoder + " is not supported. Currently supported encoders are: " + str(supportedEncoders))
 
-        if videoEncoder == 'x264' or 'x265':
+        if (videoEncoder == 'x264') or (videoEncoder == 'x265'):  # simplified or's didn't work 100%?
             buildx26XStream(videoSettingsDict, rateControlMethod, rateParam, speed)
-        elif videoEncoder == 'vp8' or 'vp9':
+        elif (videoEncoder == 'vp8') or (videoEncoder == 'vp9'):
             buildvpXStream(videoSettingsDict, rateControlMethod, rateParam)
         elif videoEncoder == 'copy':
-            buildCopyStream()
+            buildCopyStream(videoSettingsDict)
         else:
             print("Video encoder parameter not understood in MediaConverter.createVideoStream().")
             print("Supported encoder parameters are: " + str(supportedEncoders))
@@ -589,7 +600,7 @@ class MediaConverter():
             return
 
         # Select audio encoder
-        supportedAudioEncoders = ['aac', 'opus', 'vorbis'] # todo test three encoders
+        supportedAudioEncoders = ['aac', 'opus', 'vorbis', 'copy'] # todo test three encoders
 
         if audioEncoder in supportedAudioEncoders:
             audioSettingsDict.update({'audioEncoder': audioEncoder})
@@ -682,11 +693,12 @@ class MediaConverter():
 
         def fastSeek(startTime, endTime):
             if timeCodeToSeconds(startTime) < 45:
-                return "00:00:00", "00:00:00", endTime
+                fastSeekTime = '00:00:00'
+            else:
+                fastSeekTime = subtractTimeCodes(startTime, '00:00:30')
 
-            fastSeekTime = subtractTimeCodes( startTime,'00:00:30')
             startTime = subtractTimeCodes(startTime, fastSeekTime)
-            endTime = subtractTimeCodes(endTime, fastSeekTime)
+            endTime = subtractTimeCodes(fastSeekTime, endTime)
 
             if self.debug:
                 print("Fast Seeking To: " + fastSeekTime + " from " + startTime)
@@ -694,13 +706,18 @@ class MediaConverter():
                 print("Encoding " + subtractTimeCodes(startTime, endTime) + " of media.")
             return fastSeekTime, startTime, endTime
 
+        streamCopy = False
+        cut = False
+
         if (startTime != '0') and (endTime != '0'):
+            cut = True
+
             fastSeekTime, startTime, endTime = fastSeek(startTime, endTime)
             addArgsToArray('-ss ' + fastSeekTime, self.argsArray)
-            addArgsToArray('-i', self.argsArray)
-
+            addArgsToArray('-i ', self.argsArray)
             self.argsArray.append(str(self.mediaObject.filePath))
 
+            # self.argsArray.append()
             addArgsToArray('-ss ' + startTime, self.argsArray)
             addArgsToArray('-to ' + endTime, self.argsArray)
 
@@ -731,6 +748,7 @@ class MediaConverter():
         for stream in self.videoStreams:
             streamIndex = 0
             if stream['videoEncoder'] == 'copy':
+                streamCopy = True
                 addArgsToArray('-c:v copy', self.argsArray)
                 vidStrings.append('-c:v copy')
 
@@ -772,6 +790,7 @@ class MediaConverter():
         streamIndex = 0
         for stream in self.audioStreams:
             if stream['audioEncoder'] == 'copy':
+                streamCopy = True
                 fragment = ' -c:a:' + str(streamIndex) + ' copy'
                 addArgsToArray(fragment, self.argsArray)
                 audioStrings.append(fragment)
@@ -797,36 +816,6 @@ class MediaConverter():
                 addArgsToArray('-b:a:' + str(streamIndex) + ' ' + str(stream['audioBitrate']) + 'k ', self.argsArray)
 
             streamIndex += 1
-                # # audioString = '-c:a ' + str(ffAudioEncoderNames[stream['audioEncoder']])
-                #
-                # if stream['audioChannels'] == 'abx':
-                #     if stream['audioEncoder'] == 'opus':
-                #         # if None:
-                #         addArgsToArray('-c:a ' + str(ffAudioEncoderNames[stream['audioEncoder']]), self.argsArray)
-                #
-                #         # if stereo:
-                #         # addArgsToArray('-c:a ' + str(ffAudioEncoderNames[stream['audioEncoder']] + ' -ac 1'), self.argsArray)
-                #         # if mono:
-                #         #   addArgsToArray('-c:a ' + str(ffAudioEncoderNames[stream['audioEncoder']] + ' -ac 1'), self.argsArray)
-                #         addArgsToArray('-b:a ' + str(stream['audioBitrate']) + 'k ', self.argsArray)
-                #
-                #     # addArgsToArray('-filter_complex', self.argsArray)
-                #     # self.argsArray.append(" [0:" + str(stream['audioStream']) + ".0] [0:" + str(stream['audioStream']) + ".1] amerge ")
-                #     # addArgsToArray('-c:a ' + str(ffAudioEncoderNames[stream['audioEncoder']] + ' -ac 1'), self.argsArray)
-                #     # addArgsToArray('-b:a ' + str(stream['audioBitrate']) + 'k ', self.argsArray) # + str(stream['audioChannels']), self.argsArray)
-                #
-                #     # audioString += ' -filter_complex pan=1c|c0=0.5*c0+0.5*c1' + ' -ac 1'
-                #     # audioString += ' -filter_complex' +  " [0:" + str(stream['audioStream']) + ".0] [0:" + str(stream['audioStream']) + ".1] amerge"
-                #     # audioString += ' -filter_complex "[0:' + str(stream['audioStream']) + '.0:a][0:' + str(stream['audioStream'] - 1) + '.1:a]amix" -ac 1'
-                #
-                # else: # stereo
-                #     addArgsToArray('-c:a ' + str(ffAudioEncoderNames[stream['audioEncoder']]), self.argsArray)
-                #
-                #
-                # # audioString += ' -b:a ' + str(stream['audioBitrate']) + 'k ' # + str(stream['audioChannels'])
-                #
-                #     addArgsToArray('-b:a ' + str(stream['audioBitrate']) + 'k ', self.argsArray) # + str(stream['audioChannels']), self.argsArray)
-                # # audioStrings.append(audioString)
 
         if self.debug:
             print("Conversion argArray after audio stream(s): " + str(self.argsArray))
@@ -838,6 +827,8 @@ class MediaConverter():
         if self.debug:
             print("Conversion argArray after subtitle stream(s): " + str(self.argsArray))
 
+        if streamCopy and cut:
+            addArgsToArray('-avoid_negative_ts 1', self.argsArray)
         self.argsArray.append(self.outputFilePath)
 
         if self.debug:
@@ -1141,8 +1132,8 @@ class MediaObject():
         # Set self.videoCodec
         vidcodecs = self.videoCodecs()
         if len(vidcodecs) > 1:
-            self.videoCodec = warnings.warn("self.videoCodec(): There are more than one video streams present, " \
-                              "please use self.videoCodecs to view multiple video stream codecs.")
+            self.videoCodec = warnings.warn("self.videoCodec(): There are more than one video streams present in " +
+                                            self.filePath + ", please use self.videoCodecs to view multiple video stream codecs.")
         else:
             self.videoCodec = vidcodecs[0]
 
