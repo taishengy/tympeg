@@ -74,7 +74,7 @@ def convert_files_in_dir_to_vcodec(input_folder, video_codec, video_encoder, rat
     sorting_media_array = makeMediaObjectsInDirectory(input_folder)
 
     for media in sorting_media_array:
-        if media.video_codec != str(video_codec):
+        if media.videoCodec != str(video_codec):
             # print("Files moved to: " + str(path.join(original_files_dir, str(media.fileName))))
             os.rename(path.join(input_folder, str(media.fileName)), path.join(original_files_dir, str(media.fileName)))
 
