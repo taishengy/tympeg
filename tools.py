@@ -2,28 +2,40 @@ from pympeg import *
 import time
 
 
-def listdirs(path):
+def list_dirs(dir_path):
     dirs = []
-    for item in os.listdir(path):
-        if os.path.isdir(os.path.join(path, item)):
-            dirs.append(os.path.join(path, item))
+    for item in os.listdir(dir_path):
+        if os.path.isdir(os.path.join(dir_path, item)):
+            dirs.append(os.path.join(dir_path, item))
     return dirs
 
 
-def alphaConcatFilesInDirectory(inputDirPath, alphabetical=True):
+def concat_files_in_directory(input_dir_path, alphabetical=True):
     """
     Attempts to concat ALL files in a directory, be careful!
+    :param input_dir_path: string, path to directory of files to be concatenated
+    :param alphabetical: boolean, whether or not to alphabetize the files during concatenation
+    :return: void
+    """
+
+    media_object_array = makeMediaObjectsInDirectory(input_dir_path)
+    if alphabetical:
+        media_object_array = sorted(media_object_array, key=lambda media: media.fileName)
+    output_path, tail = path.split(input_dir_path)
+    ffConcat(media_object_array, path.join(output_path, media_object_array[0].fileName))
+
+
+def quick_clip(file_path, start_time, end_time, output_path=''):
+    """
+    Clips file between start_time and end_time. Copies all stream in file between time codes.
+    :param file_path: string, path of file to clip
+    :param start_time: string, timecode of when to start clip
+    :param end_time: string, timecode of when to stop clip
+    :param output_path: string, optional, path of output file
     :return:
     """
-    mediaObjectArray = makeMediaObjectsInDirectory(inputDirPath)
-    if alphabetical == True:
-        mediaObjectArray = sorted(mediaObjectArray, key=lambda media: media.fileName)
-    outputPath, tail = path.split(inputDirPath)
-    ffConcat(mediaObjectArray, path.join(outputPath, mediaObjectArray[0].fileName))
-
-def quickClip(filepath, startTime, endTime, outputPath=''):
-    media = MediaObject(filepath)
-    cvt = MediaConverter(media, outputPath)
+    media = MediaObject(file_path)
+    cvt = MediaConverter(media, output_path)
 
     for videoIndex in media.videoStreams:
         cvt.createVideoStream('copy', 'copy', 0, videoStream=videoIndex)
@@ -32,129 +44,132 @@ def quickClip(filepath, startTime, endTime, outputPath=''):
         cvt.createAudioStream(audioEncoder='copy', audioStream=audioIndex)
 
     cvt.createSubtitleStreams(media.subtitleStreams)
-    cvt.clip(startTime, endTime)
+    cvt.clip(start_time, end_time)
 
-def convertFilesThatArentVideoCodec(inputFolder, videoCodec, videoEncoder, rateControlMethod, videoRate, speed,
-                                    audioEncoder, audioBitrate, channels):
-    """ Searches directory for videos NOT encoded with videoCodec, moves them to a seperate file and encodes them
+
+def convert_files_in_dir_to_vcodec(input_folder, video_codec, video_encoder, rate_control_method, video_rate, speed,
+                                   audio_encoder, audio_bitrate, channels):
+    """ Searches directory for videos NOT encoded with video_codec, moves them to a seperate file and encodes them
      to the selected codec, saving the encodes in the original directory. Retains all streams.
 
-    :param inputFolder: string, the folder to be searched and converted
-    :param videoCodec: string, video Codec to search for 'hevc' for h265 video
-    :param videoEncoder: string, video encoder ffmpeg should use ('x265', 'x264', 'vp8', 'vp9')
-    :param rateControlMethod: string, rate control method ('crf', 'cbr', 'vbr)
-    :param videoRate: int, rate of video. Either quality factor or bitrate
+    :param input_folder: string, the folder to be searched and converted
+    :param video_codec: string, video Codec to search for 'hevc' for h265 video
+    :param video_encoder: string, video encoder ffmpeg should use ('x265', 'x264', 'vp8', 'vp9')
+    :param rate_control_method: string, rate control method ('crf', 'cbr', 'vbr)
+    :param video_rate: int, rate of video. Either quality factor or bitrate
     :param speed: string, speed of x26X family encoders
-    :param audioEncoder: string, audio encoder ('opus', 'aac', 'fdk', etc...)
-    :param audioBitrate: int, bitrate of audio
+    :param audio_encoder: string, audio encoder ('opus', 'aac', 'fdk', etc...)
+    :param audio_bitrate: int, bitrate of audio
     :param channels: string, channel layout of audio ('mono', 'stereo')
     :return:
     """
 
     # create original folder if it doesn't exist
-    originalFilesDir = path.join(inputFolder, "original_files/")
+    original_files_dir = path.join(input_folder, "original_files/")
 
-    if not path.isdir(originalFilesDir):
-        os.mkdir(originalFilesDir)
+    if not path.isdir(original_files_dir):
+        os.mkdir(original_files_dir)
 
-    # figure out what isn't the codec and move those to originalFilesDir
-    sortingMediaArray = makeMediaObjectsInDirectory(inputFolder)
+    # figure out what isn't the codec and move those to original_files_dir
+    sorting_media_array = makeMediaObjectsInDirectory(input_folder)
 
-    for media in sortingMediaArray:
-        if media.videoCodec != str(videoCodec):
-            # print("Files moved to: " + str(path.join(originalFilesDir, str(media.fileName))))
-            os.rename(path.join(inputFolder, str(media.fileName)), path.join(originalFilesDir, str(media.fileName)))
+    for media in sorting_media_array:
+        if media.video_codec != str(video_codec):
+            # print("Files moved to: " + str(path.join(original_files_dir, str(media.fileName))))
+            os.rename(path.join(input_folder, str(media.fileName)), path.join(original_files_dir, str(media.fileName)))
 
     # convert files in original_files folder
-    convertingMediaArray = makeMediaObjectsInDirectory(originalFilesDir)
-    totalFiles = str(len(convertingMediaArray))
-    print("\n\nConverting " + totalFiles + " files...\n\n")
+    converting_media_array = makeMediaObjectsInDirectory(original_files_dir)
+    total_files = str(len(converting_media_array))
+    print("\n\nConverting " + total_files + " files...\n\n")
 
     count = 0
-    inputFileSize = 0
-    outputFileSize = 0
-    timeStart = time.time()
-    totalInputSize = getDirSize(originalFilesDir)/1000000
+    input_file_size = 0
+    output_file_size = 0
+    time_start = time.time()
+    total_input_size = getDirSize(original_files_dir)/1000000
 
-    for media in convertingMediaArray:
+    for media in converting_media_array:
         name, ext = path.splitext(media.fileName)
-        outputFilePath = path.join(inputFolder, name + '.mkv')
-        cvt = MediaConverter(media, outputFilePath)
+        output_file_path = path.join(input_folder, name + '.mkv')
+        cvt = MediaConverter(media, output_file_path)
 
-        cvt.createVideoStream(videoEncoder, rateControlMethod, videoRate, speed)
+        cvt.createVideoStream(video_encoder, rate_control_method, video_rate, speed)
 
         for audioStream in range(0, len(media.audioStreams)):
-            cvt.createAudioStream(media.audioStreams[audioStream], audioEncoder, audioBitrate, audioChannels=channels)
+            cvt.createAudioStream(media.audioStreams[audioStream], audio_encoder, audio_bitrate, audioChannels=channels)
 
         cvt.createSubtitleStreams(media.subtitleStreams)
         count += 1
-        print("Converting file " + str(count) + ' of ' + totalFiles + ":")
-        print("\t{0} ({1} MB)\n".format(media.filePath), path.getsize(originalFilesDir + media.fileName)/1000000)
+        print("Converting file " + str(count) + ' of ' + total_files + ":")
+        print("\t{0} ({1} MB)\n".format(media.filePath, path.getsize(original_files_dir + media.fileName)/1000000))
 
         start = time.time()
         cvt.convert()
         end = time.time()
 
-        outputFileSize += path.getsize(outputFilePath)/1000000
-        inputFileSize += path.getsize(originalFilesDir + media.fileName)/1000000
+        output_file_size += path.getsize(output_file_path)/1000000
+        input_file_size += path.getsize(original_files_dir + media.fileName)/1000000
         minutes = (end - start)/60
-        inputRate = (path.getsize(originalFilesDir + media.fileName)/1000000)/minutes
-        avgRate = inputFileSize/((end - timeStart)/60)
-        etaH, etaM = divmod(round((totalInputSize - inputFileSize)/avgRate, 0), 60)
+        input_rate = (path.getsize(original_files_dir + media.fileName)/1000000)/minutes
+        avg_rate = input_file_size/((end - time_start)/60)
+        eta_hours, eta_mins = divmod(round((total_input_size - input_file_size)/avg_rate, 0), 60)
 
-        print('\nCompleted file {0} of {1} in {2} min'.format(count, totalFiles, minutes))
-        print('Completed file at input rate of: {0:2f} MB/min'.format(inputRate))
-        print('Average rate of: {0:2f} MB/min'.format(avgRate))
-        print('ETA: {0}:{1}'.format(etaH, etaM))
-        print('Total input converted: {0:2f} MB of {1:2f} MB'.format(inputFileSize, totalInputSize))
-        print('Total output size: {0:2f} MB'.format(outputFileSize))
-        print('Output/Input ratio: {0:3f}'.format(outputFileSize/inputFileSize))
+        print('\nCompleted file {0} of {1} in {2:,.2f} min'.format(count, total_files, minutes))
+        print('Completed file at input rate of: {0:,.2f} MB/min'.format(input_rate))
+        print('Average rate of: {0:,.2f} MB/min'.format(avg_rate))
+        print('ETA: {0}:{1}'.format(int(eta_hours), int(eta_mins)))
+        print('Total input converted: {0:,.2f} MB of {1:,.2f} MB'.format(input_file_size, total_input_size))
+        print('Total output size: {0:,.2f} MB'.format(output_file_size))
+        print('Output/Input ratio: {0:,.3f}'.format(output_file_size/input_file_size))
         print("\n\n")
 
-    timeEnd = time.time()
-    totalSeconds = timeEnd - timeStart
-    m, s = divmod(totalSeconds, 60)
+    time_end = time.time()
+    total_seconds = time_end - time_start
+    m, s = divmod(total_seconds, 60)
     minutes = m
     h, m = divmod(m, 60)
     print("Total operation completed in: %d:%02d:%02d" % (h, m, s))
-    print("Total size of files converted: " + str(inputFileSize) + " MB => " + str(outputFileSize) + " MB")
-    print("Average rate of input converted: " + str((inputFileSize/minutes)) + " MB/min")
+    print("Total size of files converted: " + str(input_file_size) + " MB => " + str(output_file_size) + " MB")
+    print("Average rate of input converted: " + str((input_file_size/minutes)) + " MB/min")
 
-def convertFolderx265Profile(inputFolder, profile):
-    videoEncoder = 'x265'
-    rateControlM = 'crf'
-    audioEncoder = 'opus'
+
+def convert_folder_x265_profile(input_folder, profile):
+    video_encoder = 'x265'
+    rate_control_method = 'crf'
+    audio_encoder = 'opus'
 
     if profile == 'low':
         rate = 25
         speed = 'veryfast'
 
-        audioBitrate = 48
+        audio_bitrate = 48
         channels = 'mono'
 
     elif profile == 'medium':
         rate = 23
         speed = 'veryfast'
 
-        audioBitrate = 96
+        audio_bitrate = 96
         channels = 'stereo'
 
     elif profile == 'high':
         rate = 20
         speed = 'veryfast'
 
-        audioBitrate = 128
+        audio_bitrate = 128
         channels = 'stereo'
 
     else:
         print("Profile specified not valid. Specify 'high', 'medium' or 'low'.")
         return
 
-    convertFilesThatArentVideoCodec(inputFolder, 'hevc', videoEncoder, rateControlM, rate, speed,
-                                    audioEncoder, audioBitrate, channels)
+    convert_files_in_dir_to_vcodec(input_folder, 'hevc', video_encoder, rate_control_method, rate, speed, audio_encoder,
+                                   audio_bitrate, channels)
 
-def concatFilesGroupedByFolders(parentDir):
-    dirs = listdirs(parentDir)
-    for dir in dirs:
-        print(dir)
-        alphaConcatFilesInDirectory(dir)
+
+def concat_files_grouped_in_folders(parent_dir):
+    dirs = list_dirs(parent_dir)
+    for directory in dirs:
+        print(directory)
+        concat_files_in_directory(directory)

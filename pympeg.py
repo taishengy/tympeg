@@ -8,14 +8,11 @@ import warnings
 # todo Move away from -b:v and -b:a to b:v:index, etc to enable different bitrates per stream
 # todo createXstream() should be able to handle an array of stream indices (maybe createXStreams()??)
 # todo scaling to height width checking with inHeight/outHeight == inWidth/outWidth and outHeight & outWidth type(int)
-# todo should timeCode functions check for decimals in HH and MM sections? need to throw error or write math for them
 # todo MediaConverter.setArgArray()
-# todo all subtitles are currently 'copy' encoded during conversion
 
 # todo ArgArray for vpx (cbr, crf, AND vbr)
 # todo Add other audio encoders (lamemp3, fdk-aac, flac)
 # todo implement ISO-693x for language dictionaries?
-# todo STDIN for ffmpeg errors
 # todo Print MediaConverter output streams and settings
 
 
