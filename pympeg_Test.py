@@ -89,13 +89,16 @@ def test_renameFile():
 
 def test_timeCodes():
     tooManyMins = '01:85:20.763'
-    decimalMins = '02:45:00.168'
+    decimalMins = '02:45.86:00.168'
 
     toomanySecs = '1:0:225.621'
+    no_hours = '0:34:12'
 
     print(add_timecodes(tooManyMins, toomanySecs))
     print(subtract_timecodes(toomanySecs, tooManyMins))
     print(str(split_timecode(toomanySecs)))
     print(concat_timecode('03', '25', '42.42'))
+    print(simplify_timecode(decimalMins))
+    print(simplify_timecode(no_hours))
 
 test_timeCodes()

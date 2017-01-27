@@ -8,7 +8,6 @@ import warnings
 # todo Move away from -b:v and -b:a to b:v:index, etc to enable different bitrates per stream
 # todo createXstream() should be able to handle an array of stream indices (maybe createXStreams()??)
 # todo scaling to height width checking with inHeight/outHeight == inWidth/outWidth and outHeight & outWidth type(int)
-# todo addTimeCodes and subtractTimeCodes() need 'while number > 60' control flow for carrying digits
 # todo should timeCode functions check for decimals in HH and MM sections? need to throw error or write math for them
 # todo MediaConverter.setArgArray()
 # todo all subtitles are currently 'copy' encoded during conversion
@@ -30,12 +29,12 @@ def split_timecode(time_code):
     """ Takes a timecode string and returns the hours, minutes and seconds. Does not simplify timecode.
 
     :param timeCode: String of format "HH:MM:SS.S" ex. "01:23:45.6"
-    :return: HH (int), MM (int), SS (float)
+    :return: HH (float), MM (float), SS (float)
     """
     HH, MM, SS = time_code.split(':')
 
-    HH = int(HH)
-    MM = int(MM)
+    HH = float(HH)
+    MM = float(MM)
     SS = float(SS)
     return HH, MM, SS
 
@@ -77,24 +76,6 @@ def subtract_timecodes(start_time, end_time):
     result = timecode_to_seconds(end_time) - timecode_to_seconds(start_time)
     if result < 0:
         result =0
-
-    # HH, MM, SS = splitTimeCode(endTime)
-    # hh, mm, ss = splitTimeCode(startTime)
-    #
-    # s = SS - ss
-    # m = MM - mm
-    # h = HH - hh
-    #
-    # while s < 0:
-    #     s += 60
-    #     m -= 1
-    #
-    # while m < 0:
-    #     m += 60
-    #     h -= 1
-    #
-    # if h < 0:
-    #     s = m = h = 0
 
     return seconds_to_timecode(result)
 
@@ -141,6 +122,15 @@ def seconds_to_timecode(seconds):
         ss = '0' + ss
 
     return '{0}:{1}:{2}'.format(hh, mm, ss)
+
+
+def simplify_timecode(time_code):
+    """
+    Simplifies a timecode to hours: int, minutes: int [0,59], seconds: float(3 decimals) [0, 59.999]
+    :param time_code:
+    :return:
+    """
+    return seconds_to_timecode(timecode_to_seconds(time_code))
 
 def getDirSize(directoryPath):
     """
