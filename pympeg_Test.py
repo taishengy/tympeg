@@ -88,14 +88,14 @@ def test_renameFile():
         print('Filename ' + name + ' renamed to: ' + renameFile(name))
 
 def test_timeCodes():
-    tooManyMins = '01:85:20.0'
-    decimalMins = '02:45:00.0'
+    tooManyMins = '01:85:20.763'
+    decimalMins = '02:45:00.168'
 
-    toomanySecs = '1:0:225.6'
+    toomanySecs = '1:0:225.621'
 
-    print(addTimeCodes(tooManyMins, toomanySecs))
-    print(subtractTimeCodes(toomanySecs, tooManyMins))
-    print(str(splitTimeCode(toomanySecs)))
-    print(concatTimeCode('03', '25', '42.42'))
+    print(add_timecodes(tooManyMins, toomanySecs))
+    print(subtract_timecodes(toomanySecs, tooManyMins))
+    print(str(split_timecode(toomanySecs)))
+    print(concat_timecode('03', '25', '42.42'))
 
 test_timeCodes()

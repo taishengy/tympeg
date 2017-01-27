@@ -26,20 +26,21 @@ import warnings
 # todo MediaConverterQueue, skipping, interrupting, sanity checks?, etc...
 
 
-def splitTimeCode(timeCode):
-    """ Takes a timecode string and returns the hours, minutes and seconds.
+def split_timecode(time_code):
+    """ Takes a timecode string and returns the hours, minutes and seconds. Does not simplify timecode.
 
     :param timeCode: String of format "HH:MM:SS.S" ex. "01:23:45.6"
     :return: HH (int), MM (int), SS (float)
     """
-    HH, MM, SS = timeCode.split(':')
+    HH, MM, SS = time_code.split(':')
 
     HH = int(HH)
     MM = int(MM)
     SS = float(SS)
     return HH, MM, SS
 
-def concatTimeCode(HH, MM, SS):
+
+def concat_timecode(HH, MM, SS):
     """ Takes hours, minutes, and seconds, and returns a timecode string in the format of "HH:MM:SS.S".
 
     :param HH: int, hours
@@ -47,51 +48,25 @@ def concatTimeCode(HH, MM, SS):
     :param SS: float, seconds
     :return: String of timecode
     """
-    HH = str(HH)
-    MM = str(MM)
-    SS = str(SS)
+    seconds = float(SS)
+    seconds += 60 * (float(MM) + (float(HH) * 60))
 
-    if len(HH) < 2:
-        HH = '0' + HH
-    if len(MM) < 2:
-        MM = '0' + MM
+    return seconds_to_timecode(seconds)
 
-    if SS.find('.') > 1:
-        wholes, decimals = SS.split('.')
-    else:
-        wholes = SS
 
-    if len(wholes) < 2:
-        SS = '0' + SS
-
-    timeCode = HH + ":" + MM + ":" + SS
-    return timeCode
-
-def addTimeCodes(timeCode1, timeCode2):
+def add_timecodes(time_code_1, time_code_2):
     """ Adds to timecodes together and returns the sum of them.
 
     :param timeCode1: string, timecode
     :param timeCode2: string, timecode
     :return: string, timecode sum
     """
-    HH, MM, SS = splitTimeCode(timeCode1)
-    hh, mm, ss = splitTimeCode(timeCode2)
+    summation = timecode_to_seconds(time_code_1) + timecode_to_seconds(time_code_2)
 
-    s = SS + ss
-    m = MM + mm
-    h = HH + hh
+    return seconds_to_timecode(summation)
 
-    if s > 60:
-        m += 1
-        s = s - 60
 
-    if m > 60:
-        h += 1
-        m = m - 60
-
-    return concatTimeCode(h, m, s)
-
-def subtractTimeCodes(startTime, endTime):
+def subtract_timecodes(start_time, end_time):
     """ Subtracts two timecode strings from each other. Returns a timecode. If remaining time is less than one it
         returns '0:00:00.0'
 
@@ -99,38 +74,73 @@ def subtractTimeCodes(startTime, endTime):
     :param subTime: String of a  timecode that will be subtracting.
     :return: String of a timecode that is the remaining time.
     """
-    HH, MM, SS = splitTimeCode(endTime)
-    hh, mm, ss = splitTimeCode(startTime)
+    result = timecode_to_seconds(end_time) - timecode_to_seconds(start_time)
+    if result < 0:
+        result =0
 
-    s = SS - ss
-    m = MM - mm
-    h = HH - hh
+    # HH, MM, SS = splitTimeCode(endTime)
+    # hh, mm, ss = splitTimeCode(startTime)
+    #
+    # s = SS - ss
+    # m = MM - mm
+    # h = HH - hh
+    #
+    # while s < 0:
+    #     s += 60
+    #     m -= 1
+    #
+    # while m < 0:
+    #     m += 60
+    #     h -= 1
+    #
+    # if h < 0:
+    #     s = m = h = 0
 
-    if s < 0:
-        s += 60
-        m -= 1
+    return seconds_to_timecode(result)
 
-    if m < 0:
-        m += 60
-        h -=1
 
-    if h < 0:
-        s = m = h = 0
-
-    return concatTimeCode(h, m, s)
-
-def timeCodeToSeconds(timeCode):
+def timecode_to_seconds(timeCode):
     """ Takes a time code and returns the total time in seconds.
 
     :param timeCode: String of a timecode.
     :return: int, seconds equivalent of the timecode
     """
-    HH, MM, SS = splitTimeCode(timeCode)
+    HH, MM, SS = split_timecode(timeCode)
 
-    MM += HH * 60
-    SS += MM * 60
+    SS += 60 * (MM + (HH * 60))
 
     return SS
+
+
+def seconds_to_timecode(seconds):
+    """
+    Converts seconds into a conditioned and simplified timecode string
+    :param seconds: float, seconds
+    :return: string, timecode in 'HH:MM:SS.SSS' format
+    """
+    h, s = divmod(seconds, 3600)
+    m, s = divmod(s, 60)
+
+    s = round(s * 1000)/1000
+
+    hh = str(int(h))
+    mm = str(int(m))
+    ss = str(s)
+
+    if len(hh) < 2:
+        hh = '0' + hh
+    if len(mm) < 2:
+        mm = '0' + mm
+
+    if ss.find('.') > 1:
+        wholes, decimals = ss.split('.')
+    else:
+        wholes = ss
+
+    if len(wholes) < 2:
+        ss = '0' + ss
+
+    return '{0}:{1}:{2}'.format(hh, mm, ss)
 
 def getDirSize(directoryPath):
     """
@@ -692,18 +702,18 @@ class MediaConverter():
                     array.append(arg)
 
         def fastSeek(startTime, endTime):
-            if timeCodeToSeconds(startTime) < 45:
+            if timecode_to_seconds(startTime) < 45:
                 fastSeekTime = '00:00:00'
             else:
-                fastSeekTime = subtractTimeCodes(startTime, '00:00:30')
+                fastSeekTime = subtract_timecodes(startTime, '00:00:30')
 
-            startTime = subtractTimeCodes(startTime, fastSeekTime)
-            endTime = subtractTimeCodes(fastSeekTime, endTime)
+            startTime = subtract_timecodes(startTime, fastSeekTime)
+            endTime = subtract_timecodes(fastSeekTime, endTime)
 
             if self.debug:
                 print("Fast Seeking To: " + fastSeekTime + " from " + startTime)
                 print("Encoding from " + startTime + " to " + endTime + " after fastSeeking.")
-                print("Encoding " + subtractTimeCodes(startTime, endTime) + " of media.")
+                print("Encoding " + subtract_timecodes(startTime, endTime) + " of media.")
             return fastSeekTime, startTime, endTime
 
         streamCopy = False
@@ -837,9 +847,9 @@ class MediaConverter():
     def estimateVideoBitrate(self, targetFileSize, startTime=-1, endTime=-1, audioBitrate=-1, otherBitrates=0):
 
         if startTime == -1 and endTime == -1:
-            duration = timeCodeToSeconds(self.mediaObject.duration)
+            duration = timecode_to_seconds(self.mediaObject.duration)
         else:
-            duration = timeCodeToSeconds(subtractTimeCodes(startTime, endTime))
+            duration = timecode_to_seconds(subtract_timecodes(startTime, endTime))
 
         if audioBitrate == -1:
             if self.audioStreams != []:
