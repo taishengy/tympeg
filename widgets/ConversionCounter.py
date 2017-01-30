@@ -81,6 +81,7 @@ class Window(QDialog):
         for fileNames in os.listdir(rootdir):
             if os.path.isdir(rootdir + fileNames):
                 directoryList.append(fileNames)
+        directoryList = sorted(directoryList)
 
         # Scan subdirectories and tally info
         for dirs in directoryList:

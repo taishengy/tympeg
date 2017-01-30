@@ -4,6 +4,7 @@ import json
 from os import path, listdir, remove, makedirs
 from argparse import Namespace
 import warnings
+from threading import Thread
 
 # todo Move away from -b:v and -b:a to b:v:index, etc to enable different bitrates per stream
 # todo createXstream() should be able to handle an array of stream indices (maybe createXStreams()??)
@@ -25,15 +26,15 @@ import warnings
 def split_timecode(time_code):
     """ Takes a timecode string and returns the hours, minutes and seconds. Does not simplify timecode.
 
-    :param timeCode: String of format "HH:MM:SS.S" ex. "01:23:45.6"
+    :param time_code: String of format "HH:MM:SS.S" ex. "01:23:45.6"
     :return: HH (float), MM (float), SS (float)
     """
-    HH, MM, SS = time_code.split(':')
+    hh, mm, ss = time_code.split(':')
 
-    HH = float(HH)
-    MM = float(MM)
-    SS = float(SS)
-    return HH, MM, SS
+    hh = float(hh)
+    mm = float(mm)
+    ss = float(ss)
+    return hh, mm, ss
 
 
 def concat_timecode(HH, MM, SS):
@@ -53,8 +54,8 @@ def concat_timecode(HH, MM, SS):
 def add_timecodes(time_code_1, time_code_2):
     """ Adds to timecodes together and returns the sum of them.
 
-    :param timeCode1: string, timecode
-    :param timeCode2: string, timecode
+    :param time_code_1: string, timecode
+    :param time_code_2: string, timecode
     :return: string, timecode sum
     """
     summation = timecode_to_seconds(time_code_1) + timecode_to_seconds(time_code_2)
@@ -66,8 +67,8 @@ def subtract_timecodes(start_time, end_time):
     """ Subtracts two timecode strings from each other. Returns a timecode. If remaining time is less than one it
         returns '0:00:00.0'
 
-    :param timeCode: String of a timecode that will be subtracted from.
-    :param subTime: String of a  timecode that will be subtracting.
+    :param start_time: String of a timecode that will be subtracted from.
+    :param end_time: String of a  timecode that will be subtracting.
     :return: String of a timecode that is the remaining time.
     """
     result = timecode_to_seconds(end_time) - timecode_to_seconds(start_time)
@@ -77,13 +78,13 @@ def subtract_timecodes(start_time, end_time):
     return seconds_to_timecode(result)
 
 
-def timecode_to_seconds(timeCode):
+def timecode_to_seconds(time_code):
     """ Takes a time code and returns the total time in seconds.
 
-    :param timeCode: String of a timecode.
+    :param time_code: String of a timecode.
     :return: int, seconds equivalent of the timecode
     """
-    HH, MM, SS = split_timecode(timeCode)
+    HH, MM, SS = split_timecode(time_code)
 
     SS += 60 * (MM + (HH * 60))
 
@@ -129,16 +130,17 @@ def simplify_timecode(time_code):
     """
     return seconds_to_timecode(timecode_to_seconds(time_code))
 
-def getDirSize(directoryPath):
+
+def get_dir_size(directory_path):
     """
     Gets the size of files in a folder. Non-recursive, ignores folders.
-    :param directoryPath: string, path of directory to be analyzed
+    :param directory_path: string, path of directory to be analyzed
     :return: int, size of sum of files in directory in bytes
     """
-    files = [f for f in listdir(directoryPath) if path.isfile(path.join(directoryPath, f))]
+    files = [f for f in listdir(directory_path) if path.isfile(path.join(directory_path, f))]
     size = 0
     for file in files:
-        size += path.getsize(path.join(directoryPath, file))
+        size += path.getsize(path.join(directory_path, file))
     return size
 
 
@@ -155,7 +157,7 @@ def renameFile(filepath):
     """ Renames file to file_X.ext where 'X' is a number. Adds '_X' or increments '_X' if already present
 
     :param filepath: string, the filepath of the file that could be renamed
-    :return: string, renamed file
+    :return: string, file name, not a file path
     """
     inDir, fileName = path.split(filepath)
 
@@ -184,6 +186,7 @@ def renameFile(filepath):
         filepath = path.join(inDir, fileName)
 
     return fileName
+
 
 def ffConcat(mediaObjectArray, outputFilepath):
     """
@@ -275,6 +278,30 @@ class MediaConverterQueue():
         pass
 
     def openLog(self):
+        pass
+
+class StreamSaver(Thread):
+    def __init__(self, input_stream, output_file_path_ts):
+        Thread.__init__(self)
+        self.file_writer = None
+        directory, file_name = path.split(output_file_path_ts)
+
+        # make sure output is .ts file for stable writing
+        file_name, ext = file_name.split('.')
+        file_name += '.ts'
+
+        if not path.isdir(directory):
+            os.mkdir(directory)
+        if path.isfile(output_file_path_ts):
+            file_name = renameFile(file_name)
+            output_file_path_ts = path.join(directory, file_name)
+
+        self.args = ['ffmpeg', '-i', str(input_stream), '-c', 'copy', output_file_path_ts]
+
+    def run(self):
+        self.file_writer = subprocess.run(self.args)
+
+    def quit(self):
         pass
 
 class MediaConverter():
@@ -531,7 +558,7 @@ class MediaConverter():
             videoSettingsDict.update({'height': int(height)})
 
             if self.debug:
-                if (height == -1 or width != -1) or ( height != -1 or width == -1):
+                if (height == -1 or width != -1) or (height != -1 or width == -1):
                     if height == -1:
                         print("Scaling to width of " + str(width) + " pixels.")
                     else:
@@ -881,14 +908,24 @@ class MediaObject():
         self.subtitleStreams = []
         self.attachmentStreams = []
         self.unrecognizedStreams = []
+        self.resolutions = []
+        self.width = 0
+        self.height = 0
 
         # Set by parseMetaInfo()
+        self.file_size = path.getsize(self.filePath)
         self.format = {}        # Done
+        self.framerates_dec = []
+        self.framerates_frac = []
+        self.framerate_dec = []
+        self.framerate_frac = []
         self.duration = 0       # Done
         self.codecs = []        # Done
         self.streamTypes = []   # Done
         self.videoCodec = ''    # Done
         self.bitrates = []      # Done
+        self.video_bitrate = 0  # Done
+        self.audio_bitrate = 0  # Done
         self.bitrate = 0        # Done
         self.size = 0           # Done
         self.langauges = {}     # todo Add some library matching or something for abbreviations, japan=japanese=jpn=jap etc...
@@ -927,31 +964,70 @@ class MediaObject():
         :return:
         """
         ffProbeInfo = json.loads(self.ffprobeOut, object_hook=lambda d: Namespace(**d))
-
+        # print(ffProbeInfo)
         i = 0
         for stream in ffProbeInfo.streams:
             streamDict = {}
             self.streams.append(streamDict)
             self.namespaceToDict(stream, '', -1, self.streams[i])
             i += 1
-
+        # print()
+        # print(self.streams)
         for stream in self.streams:
-
+            # stream = sorted(stream)
+            print(stream)
             if stream['codec_type'] == "video":
                 # print("Stream " + str(stream['index']) + " is a video stream.")
                 self.videoStreams.append(stream['index'])
+                self.video_bitrate += int(self.getValueFromKey('bit_rate', stream))
+
+                framerate = self.getValueFromKey('r_frame_rate', stream)
+                num, denom = framerate.split('/')
+                self.framerates_dec.append(float(num)/float(denom))
+                self.framerates_frac.append(framerate)
+
+
+                # use the larger of coded_dim and dim, select matching dim, add to self.resolutions
+                coded_height = int(self.getValueFromKey('coded_height', stream))
+                coded_width = int(self.getValueFromKey('coded_width', stream))
+                height = int(self.getValueFromKey('height', stream))
+                width = int(self.getValueFromKey('width', stream))
+
+                y_dim = max(coded_height, height)
+                if y_dim == coded_height:
+                    x_dim = coded_width
+                else:
+                    x_dim = width
+                self.resolutions.append((x_dim, y_dim))
+
             elif stream['codec_type'] == "audio":
                 # print("Stream " + str(stream['index']) + " is a audio stream.")
                 self.audioStreams.append(stream['index'])
+                self.audio_bitrate += int(self.getValueFromKey('bit_rate', stream))
+
             elif stream['codec_type'] == "subtitle":
                 # print("Stream " + str(stream['index']) + " is a subtitle stream.")
                 self.subtitleStreams.append(stream['index'])
+
             elif stream['codec_type'] == "attachment":
                 # print("Stream " + str(stream['index']) + " is an attachment stream.")
                 self.attachmentStreams.append(stream['index'])
+
             else:
                 # print("Stream " + str(stream['index']) + " is an unrecognized stream.")
                 self.unrecognizedStreams.append(stream['index'])
+
+        # choosing default self.width and self.height from multiple streams, always pick the largest and matching
+        widths = []
+        for ndx in range(len(self.resolutions)):
+            widths.append(self.resolutions[ndx][0])
+
+        self.width = max(widths)
+        primary_vid_stream = widths.index(self.width)
+        self.height = self.resolutions[primary_vid_stream][1]
+        self.framerate_dec = self.framerates_dec[primary_vid_stream]
+        self.framerate_frac = self.framerates_frac[primary_vid_stream]
+
 
         # print("Index of video streams: " + str(self.videoStreams))
         # print("Index of audio streams: " + str(self.audioStreams))
@@ -1129,8 +1205,9 @@ class MediaObject():
         # Set self.videoCodec
         vidcodecs = self.videoCodecs()
         if len(vidcodecs) > 1:
-            self.videoCodec = warnings.warn("self.videoCodec(): There are more than one video streams present in " +
-                                            self.filePath + ", please use self.videoCodecs to view multiple video stream codecs.")
+            self.videoCodec = [0]
+            # warnings.warn("self.videoCodec(): There are more than one video streams present in "
+            #               + self.filePath + ", please use self.videoCodecs to view multiple video stream codecs.")
         else:
             self.videoCodec = vidcodecs[0]
 

@@ -49,7 +49,7 @@ def quick_clip(file_path, start_time, end_time, output_path=''):
 
 def convert_files_in_dir_to_vcodec(input_folder, video_codec, video_encoder, rate_control_method, video_rate, speed,
                                    audio_encoder, audio_bitrate, channels):
-    """ Searches directory for videos NOT encoded with video_codec, moves them to a seperate file and encodes them
+    """ Searches directory for videos NOT encoded with video_codec, moves them to a separate file and encodes them
      to the selected codec, saving the encodes in the original directory. Retains all streams.
 
     :param input_folder: string, the folder to be searched and converted
@@ -67,18 +67,22 @@ def convert_files_in_dir_to_vcodec(input_folder, video_codec, video_encoder, rat
     # create original folder if it doesn't exist
     original_files_dir = path.join(input_folder, "original_files/")
 
-    if not path.isdir(original_files_dir):
-        os.mkdir(original_files_dir)
-
     # figure out what isn't the codec and move those to original_files_dir
     sorting_media_array = makeMediaObjectsInDirectory(input_folder)
+    if len(sorting_media_array) < 1:
+        return
 
+    nothing_to_convert = True
     for media in sorting_media_array:
         if media.videoCodec != str(video_codec):
-            # print("Files moved to: " + str(path.join(original_files_dir, str(media.fileName))))
+            nothing_to_convert = False
+            if not path.isdir(original_files_dir):
+                os.mkdir(original_files_dir)
             os.rename(path.join(input_folder, str(media.fileName)), path.join(original_files_dir, str(media.fileName)))
 
     # convert files in original_files folder
+    if nothing_to_convert:
+        return
     converting_media_array = makeMediaObjectsInDirectory(original_files_dir)
     total_files = str(len(converting_media_array))
     print("\n\nConverting " + total_files + " files...\n\n")
@@ -87,7 +91,7 @@ def convert_files_in_dir_to_vcodec(input_folder, video_codec, video_encoder, rat
     input_file_size = 0
     output_file_size = 0
     time_start = time.time()
-    total_input_size = getDirSize(original_files_dir)/1000000
+    total_input_size = get_dir_size(original_files_dir)/1000000
 
     for media in converting_media_array:
         name, ext = path.splitext(media.fileName)
@@ -102,7 +106,7 @@ def convert_files_in_dir_to_vcodec(input_folder, video_codec, video_encoder, rat
         cvt.createSubtitleStreams(media.subtitleStreams)
         count += 1
         print("Converting file " + str(count) + ' of ' + total_files + ":")
-        print("\t{0} ({1} MB)\n".format(media.filePath, path.getsize(original_files_dir + media.fileName)/1000000))
+        print("\t{0} ({1:,.2f} MB)\n".format(media.filePath, path.getsize(original_files_dir + media.fileName)/1000000))
 
         start = time.time()
         cvt.convert()
@@ -127,7 +131,10 @@ def convert_files_in_dir_to_vcodec(input_folder, video_codec, video_encoder, rat
     time_end = time.time()
     total_seconds = time_end - time_start
     m, s = divmod(total_seconds, 60)
-    minutes = m
+    if m == 0:
+        minutes = 1
+    else:
+        minutes = m
     h, m = divmod(m, 60)
     print("Total operation completed in: %d:%02d:%02d" % (h, m, s))
     print("Total size of files converted: " + str(input_file_size) + " MB => " + str(output_file_size) + " MB")
@@ -173,3 +180,27 @@ def concat_files_grouped_in_folders(parent_dir):
     for directory in dirs:
         print(directory)
         concat_files_in_directory(directory)
+
+def decide_x265_quality(media_object):
+    duration = media_object.duration
+    file_size = media_object.file_size
+    width = media_object.width
+    height = media_object.height
+    pixels = media_object.width * media_object.height
+    video_bitrate = media_object.video_bitrate
+    audio_bitrate = media_object.audio_bitrate
+    framerate = media_object.framerate_dec
+
+    bits_pixel = video_bitrate / (pixels * framerate)
+
+    print("Duration: {}".format(duration))
+    print("FileSize: {}".format(file_size))
+    print("Width: {}".format(width))
+    print("Height: {}".format(height))
+    print("Pixels: {}".format(pixels))
+    print("Video Bitrate: {}".format(video_bitrate))
+    print("Audio Bitrate: {}".format(audio_bitrate))
+    print("Video Framerate: {}".format(framerate))
+    print("Bits per Pixel: {}".format(bits_pixel))
+
+
