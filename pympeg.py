@@ -928,7 +928,7 @@ class MediaObject():
         self.audio_bitrate = 0  # Done
         self.bitrate = 0        # Done
         self.size = 0           # Done
-        self.langauges = {}     # todo Add some library matching or something for abbreviations, japan=japanese=jpn=jap etc...
+        self.languages = {}     # todo Add some library matching or something for abbreviations, japan=japanese=jpn=jap etc...
 
     def run(self):
         """ Calls ffprobe and extracts media information from it's output. Then calls methods to parse the information
@@ -956,6 +956,71 @@ class MediaObject():
             self.parseStreams()
             self.parseMetaInfo()
 
+
+    def parseMetaInfo(self):
+        """ Parses ffprobe json output and builds the self.format{} dictionary. Also sets some useful attributes like
+        filesize, bitrate, codecs, etc...
+
+        :return:
+        """
+
+        ffProbeInfo = json.loads(self.ffprobeOut, object_hook=lambda d: Namespace(**d))
+        self.namespaceToDict(ffProbeInfo.format, '', -1, self.format)
+        self.bitrate = int(self.format['bit_rate'])
+        self.duration = float(self.format['duration'])
+        self.size = int(self.format['size'])
+
+        for stream in self.streams:
+
+            # Setting self.codecs[],
+            try:
+                self.codecs.append(stream['codec_name'])
+            except KeyError:
+                print("codec_name not found in stream " + str(stream['index']))
+                print("     codecs[" + str(stream['index']) + "] set to 'unknown'.")
+                self.streamTypes.append('unknown')
+
+            # Setting self.streamTypes[]
+            try:
+                self.streamTypes.append(stream['codec_type'])
+            except KeyError:
+                print("codec_type not found in stream " + str(stream['index']))
+                print("     streamTypes[" + str(stream['index']) + "] set to 'unknown'.")
+                self.streamTypes.append('unknown')
+
+            # Setting self.bitrates[]
+            try:
+                bps = self.getValueFromKey('bit_rate', stream)
+                if bps is not None:
+                    self.bitrates.append(int(bps))
+                else:
+                    try:
+                        bps = self.getValueFromKey('BPS', stream)
+                        if bps is not None:
+                            self.bitrates.append(int(bps))
+                    finally:
+                        if bps is None:
+                            self.bitrates.append(0)
+
+            except KeyError:
+                print("Bitrate not found in stream " + str(stream['index']))
+
+        # warnings.warn("self.bitrates[] is currently unreliable, particularily if a file has already been transcoded.")
+
+        # Set self.videoCodec
+        vidcodecs = self.videoCodecs()
+        if len(vidcodecs) > 1:
+            self.videoCodec = [0]
+            # warnings.warn("self.videoCodec(): There are more than one video streams present in "
+            #               + self.filePath + ", please use self.videoCodecs to view multiple video stream codecs.")
+        else:
+            try:
+                self.videoCodec = vidcodecs[0]
+            except IndexError as ie:
+                print(ie)
+                print("Could not find videoCodec info")
+
+
     def parseStreams(self):
         """ Turns the ffprobe json stream output into nested dictionaries stored as a list at self.streams[{}]. Sorts
          streams into seperate lists based on type (audio, video, etc...). Lists of types integers that correspond to
@@ -964,6 +1029,7 @@ class MediaObject():
         :return:
         """
         ffProbeInfo = json.loads(self.ffprobeOut, object_hook=lambda d: Namespace(**d))
+        self.duration = float(json.loads(self.ffprobeOut)['format']['duration'])
         # print(ffProbeInfo)
         i = 0
         for stream in ffProbeInfo.streams:
@@ -975,11 +1041,16 @@ class MediaObject():
         # print(self.streams)
         for stream in self.streams:
             # stream = sorted(stream)
-            print(stream)
+            # print(stream)
             if stream['codec_type'] == "video":
                 # print("Stream " + str(stream['index']) + " is a video stream.")
                 self.videoStreams.append(stream['index'])
-                self.video_bitrate += int(self.getValueFromKey('bit_rate', stream))
+                try:
+                    self.video_bitrate += int(self.getValueFromKey('bit_rate', stream))
+                except TypeError as te:
+                    print("File {} does not have a 'bitrate' attribute in video stream. Attempting to infer from audio".format(self.fileName))
+                    print(stream)
+                    print("With file {}".format(self.fileName))
 
                 framerate = self.getValueFromKey('r_frame_rate', stream)
                 num, denom = framerate.split('/')
@@ -1003,7 +1074,12 @@ class MediaObject():
             elif stream['codec_type'] == "audio":
                 # print("Stream " + str(stream['index']) + " is a audio stream.")
                 self.audioStreams.append(stream['index'])
-                self.audio_bitrate += int(self.getValueFromKey('bit_rate', stream))
+                try:
+                    self.audio_bitrate += int(self.getValueFromKey('bit_rate', stream))
+                except TypeError as te:
+                    print("File {} does not have a 'bitrate' attribute in audio stream. Attempting to infer from audio".format(self.fileName))
+                    print(stream)
+                    print("With file {}".format(self.fileName))
 
             elif stream['codec_type'] == "subtitle":
                 # print("Stream " + str(stream['index']) + " is a subtitle stream.")
@@ -1017,16 +1093,36 @@ class MediaObject():
                 # print("Stream " + str(stream['index']) + " is an unrecognized stream.")
                 self.unrecognizedStreams.append(stream['index'])
 
-        # choosing default self.width and self.height from multiple streams, always pick the largest and matching
-        widths = []
-        for ndx in range(len(self.resolutions)):
-            widths.append(self.resolutions[ndx][0])
+        if self.fileName == 'MXGS-747.mkv':
+            print(self.fileName)
 
-        self.width = max(widths)
-        primary_vid_stream = widths.index(self.width)
-        self.height = self.resolutions[primary_vid_stream][1]
-        self.framerate_dec = self.framerates_dec[primary_vid_stream]
-        self.framerate_frac = self.framerates_frac[primary_vid_stream]
+        if self.video_bitrate == 0 and self.audio_bitrate == 0:
+            self.audio_bitrate = 128000
+            print("Can't infer either video or audio bitrates."
+                  " Assuming audio bitrate of {} kb/s to infer video bitrate".format(self.audio_bitrate/1000))
+
+            self.video_bitrate = (8 * self.file_size - self.audio_bitrate * self.duration) / self.duration
+
+        elif self.video_bitrate == 0:
+            print("Infering video bitrate from audio bitrate...")
+            self.video_bitrate = (8 * self.file_size - self.audio_bitrate * self.duration) / self.duration
+
+        elif self.audio_bitrate == 0:
+            print("Infering audio bitrate from video bitrate...")
+            self.audio_bitrate = (8 * self.file_size - self.video_bitrate * self.duration) / self.duration
+
+        # choosing default self.width and self.height from multiple streams, always pick the largest and matching
+        if len(self.videoStreams) != 0:
+            widths = []
+
+            for ndx in range(len(self.resolutions)):
+                widths.append(self.resolutions[ndx][0])
+
+            self.width = max(widths)
+            primary_vid_stream = widths.index(self.width)
+            self.height = self.resolutions[primary_vid_stream][1]
+            self.framerate_dec = self.framerates_dec[primary_vid_stream]
+            self.framerate_frac = self.framerates_frac[primary_vid_stream]
 
 
         # print("Index of video streams: " + str(self.videoStreams))
@@ -1151,65 +1247,6 @@ class MediaObject():
                     item = self.getValueFromKey(key, v)
                     if item is not None:
                         return item
-
-    def parseMetaInfo(self):
-        """ Parses ffprobe json output and builds the self.format{} dictionary. Also sets some useful attributes like
-        filesize, bitrate, codecs, etc...
-
-        :return:
-        """
-
-        ffProbeInfo = json.loads(self.ffprobeOut, object_hook=lambda d: Namespace(**d))
-        self.namespaceToDict(ffProbeInfo.format, '', -1, self.format)
-        self.bitrate = int(self.format['bit_rate'])
-        self.duration = float(self.format['duration'])
-        self.size = int(self.format['size'])
-
-        for stream in self.streams:
-
-            # Setting self.codecs[],
-            try:
-                self.codecs.append(stream['codec_name'])
-            except KeyError:
-                print("codec_name not found in stream " + str(stream['index']))
-                print("     codecs[" + str(stream['index']) + "] set to 'unknown'.")
-                self.streamTypes.append('unknown')
-
-            # Setting self.streamTypes[]
-            try:
-                self.streamTypes.append(stream['codec_type'])
-            except KeyError:
-                print("codec_type not found in stream " + str(stream['index']))
-                print("     streamTypes[" + str(stream['index']) + "] set to 'unknown'.")
-                self.streamTypes.append('unknown')
-
-            # Setting self.bitrates[]
-            try:
-                bps = self.getValueFromKey('bit_rate', stream)
-                if bps is not None:
-                    self.bitrates.append(int(bps))
-                else:
-                    try:
-                        bps = self.getValueFromKey('BPS', stream)
-                        if bps is not None:
-                            self.bitrates.append(int(bps))
-                    finally:
-                        if bps is None:
-                            self.bitrates.append(0)
-
-            except KeyError:
-                print("Bitrate not found in stream " + str(stream['index']))
-
-        # warnings.warn("self.bitrates[] is currently unreliable, particularily if a file has already been transcoded.")
-
-        # Set self.videoCodec
-        vidcodecs = self.videoCodecs()
-        if len(vidcodecs) > 1:
-            self.videoCodec = [0]
-            # warnings.warn("self.videoCodec(): There are more than one video streams present in "
-            #               + self.filePath + ", please use self.videoCodecs to view multiple video stream codecs.")
-        else:
-            self.videoCodec = vidcodecs[0]
 
     def namespaceToDict(self, data, key, level, streamDict):
         """ Transforms namespace extracted from ffprobe json into a nested dictionary strucutre for polling later.

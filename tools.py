@@ -1,5 +1,6 @@
 from pympeg import *
 import time
+import io
 
 
 def list_dirs(dir_path):
@@ -202,5 +203,30 @@ def decide_x265_quality(media_object):
     print("Audio Bitrate: {}".format(audio_bitrate))
     print("Video Framerate: {}".format(framerate))
     print("Bits per Pixel: {}".format(bits_pixel))
+
+
+def save_bits_per_pixel_dist(parent_dir, output_file_path, exclude_codec):
+    directories = sorted(list_dirs(parent_dir))
+    with open(output_file_path, 'w', encoding='utf8') as file:
+        file.write("{},{} bits,{} bits,{} bytes,{}\n".format("bits/pixel", "video bitrate", "audio bitrate", "file size", "file path"))
+        for dirs in directories:
+            media_array = sorted(makeMediaObjectsInDirectory(dirs), key=lambda media: media.fileName)
+
+            for media in media_array:
+                if media.videoCodec != exclude_codec:
+                    video_bitrate = media.video_bitrate
+                    pixels = media.width * media.height
+                    framerate = media.framerate_dec
+                    try:
+                        bits_pixel = video_bitrate / (pixels * framerate)
+                    except TypeError as te:
+                        print(te)
+                        print(media.fileName)
+                        bits_pixel = -1
+
+                    file.write("{},{},{},{},{}\n".format(bits_pixel, video_bitrate, media.audio_bitrate,media.file_size, media.filePath))
+
+    file.close()
+
 
 
