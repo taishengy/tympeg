@@ -11,6 +11,14 @@ def list_dirs(dir_path):
     return dirs
 
 
+def list_files(dir_path):
+    files = []
+    for item in os.listdir(dir_path):
+        if path.isfile(path.join(dir_path, item)):
+            files.append(path.join(dir_path, item))
+    return files
+
+
 def concat_files_in_directory(input_dir_path, alphabetical=True):
     """
     Attempts to concat ALL files in a directory, be careful!
@@ -182,6 +190,7 @@ def concat_files_grouped_in_folders(parent_dir):
         print(directory)
         concat_files_in_directory(directory)
 
+
 def decide_x265_quality(media_object):
     duration = media_object.duration
     file_size = media_object.file_size
@@ -225,8 +234,6 @@ def save_bits_per_pixel_dist(parent_dir, output_file_path, exclude_codec):
                         bits_pixel = -1
 
                     file.write("{},{},{},{},{}\n".format(bits_pixel, video_bitrate, media.audio_bitrate,media.file_size, media.filePath))
-
-    file.close()
-
+            file.close()
 
 
