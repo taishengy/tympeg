@@ -1,23 +1,24 @@
 import os
 import subprocess
+from sys import exit
 import json
+from multiprocessing import Process
+
 from os import path, listdir, remove, makedirs
 from argparse import Namespace
 import warnings
-from threading import Thread
+from threading import Thread, Timer
+import time
 
 # todo Move away from -b:v and -b:a to b:v:index, etc to enable different bitrates per stream
-# todo createXstream() should be able to handle an array of stream indices (maybe createXStreams()??)
 # todo scaling to height width checking with inHeight/outHeight == inWidth/outWidth and outHeight & outWidth type(int)
-# todo MediaConverter.setArgArray()
 
 # todo ArgArray for vpx (cbr, crf, AND vbr)
 # todo Add other audio encoders (lamemp3, fdk-aac, flac)
-# todo implement ISO-693x for language dictionaries?
 # todo Print MediaConverter output streams and settings
 
-
 # todo Longterm
+# todo implement ISO-693x for language dictionaries?
 # todo MediaStream objects instead of passing around indexes and stuff
 # todo MediaConverterQueue (Queueing, progress reports, error handling, etc...)
 # todo MediaConverterQueue, skipping, interrupting, sanity checks?, etc...
@@ -73,7 +74,9 @@ def subtract_timecodes(start_time, end_time):
     """
     result = timecode_to_seconds(end_time) - timecode_to_seconds(start_time)
     if result < 0:
-        result =0
+        result = 0
+        print("Warning: The result of subtract_timecodes is less than 0 seconds:")
+        print("\twill return '00:00:00' as timecode.")
 
     return seconds_to_timecode(result)
 
@@ -153,6 +156,7 @@ def MBtokb(megabytes):
     kilobytes = megabytes * 8192
     return kilobytes
 
+
 def renameFile(filepath):
     """ Renames file to file_X.ext where 'X' is a number. Adds '_X' or increments '_X' if already present
 
@@ -207,19 +211,19 @@ def ffConcat(mediaObjectArray, outputFilepath):
             return
 
     # write the temporary list.txt of inputs that the ffmpeg concat demuxer wants
-    listFileName = str(os.getcwd()) + "\\tempFfConcat.txt"
+    listFileName = path.join(str(os.getcwd()), "tempFfConcat.txt")
     with open(listFileName, 'w') as file:
         for items in mediaObjectArray:
             print(str(items.filePath))
-            file.write('file ' + "\'"+ str(items.filePath) + "\'" + '\n')
+            file.write('file ' + "\'" + str(items.filePath) + "\'" + '\n')
 
-    # build "ffmpeg concat" string
+    # build "ffmpeg concat" string/array
     # assume all files are same codec/resoultion/params, otherwise ffmpeg will throw it's own error
-    ffmpegConcatStr = 'ffmpeg -f concat -safe 0 -i "' + listFileName + '" -c copy ' + '"' + outputFilepath + '"'
+    ffmpegConcatArr = ['ffmpeg', '-f', 'concat', '-safe', '0', '-i', listFileName, '-c', 'copy', outputFilepath]
 
     # subprocess "ffmpeg concat"
     try:
-        processData = subprocess.run(ffmpegConcatStr, check=True)
+        processData = subprocess.run(ffmpegConcatArr, check=True)
     except subprocess.CalledProcessError as cpe:
         print("Error: CalledProcess in pympeg.ffConcat()")
         print("CalledProcessError: " + str(cpe))
@@ -228,6 +232,7 @@ def ffConcat(mediaObjectArray, outputFilepath):
         os.remove(listFileName)
 
     return processData
+
 
 def makeMediaObjectsInDirectory(directory, selector=None):
 
@@ -242,7 +247,8 @@ def makeMediaObjectsInDirectory(directory, selector=None):
 
     directory = conditionDirectoryString(directory)
     mediaObjectArray = []
-    fileExtensions = ['.mp4', '.mkv', '.avi', '.m4v', '.wmv', '.webm', '.flv', '.mov', '.mpg', '.mpeg', '.ogg', '.ogv']
+    fileExtensions = ['.mp4', '.mkv', '.avi', '.m4v', '.wmv', '.webm', '.flv', '.mov', '.mpg', '.mpeg', '.ogg', '.ogv',
+                      '.ts', '.vob', '.VOB', '.mov', '.MOV', '.rmvb']
 
     for fileNames in os.listdir(directory):
         if any(extensions in fileNames for extensions in fileExtensions):
@@ -252,37 +258,108 @@ def makeMediaObjectsInDirectory(directory, selector=None):
 
     return mediaObjectArray
 
-class MediaConverterQueue():
-    def __init__(self, logDirectory):
-        self.jobList = []
-        self.logDirectory = logDirectory
 
-    def addJob(self, job):
-        self.jobList.append(job)
+class MediaConverterQueue:
+    def __init__(self, log_directory='', max_processes=1, logging=False, debug=False):
+        self.job_list = []
+        self.processes = []
+        self.refresh_interval = 10  # How often processes are checked to see if they're converted (seconds)
+        self.active_processes = 0
+        self.start_time = 0
+        self.end_time = 0
+        self.total_time = 0
+        self.done = False
 
-    def addJobs(self, jobs):
+        self.log_directory = log_directory
+        self.max_processes = max_processes
+
+    def run(self):
+        self.job_list = sorted(self.job_list, key=lambda media: media.mediaObject.fileName)  # todo TEST THIS !!!
+
+        while (self.count_active_processes() < self.max_processes) and (len(self.job_list) > 0):
+            self.start_job()
+        self.start_time = time.time()
+
+        self.periodic()
+
+    def count_active_processes(self):
+        active = 0
+        for process in self.processes:
+            if process.is_alive():
+                active += 1
+        return active
+
+    def start_job(self):
+        # make sure a job can be started without surpassing self.max_processes!
+        if self.count_active_processes() >= self.max_processes:
+            print("Failed to start a new job, would exceed maximum processes")
+            return
+
+        # make sure there are still jobs to do before popping an empty list!
+        if len(self.job_list) < 1:
+            print("Failed to start a new job, no more jobs remaining!")
+            return
+
+        next_job = self.job_list.pop()
+        process = Process(target=next_job.convert, args=())
+        process.start()
+        self.processes.append(process)
+
+    def prune_dead_processes(self):
+        for process in self.processes:
+            if (not process.is_alive()) and (type(process) == Process):
+                process.terminate()
+                ndx = self.processes.index(process)
+                del self.processes[ndx]
+
+    def periodic(self):
+        self.prune_dead_processes()
+
+        # Check if queue is empty and jobs are done
+        if (self.count_active_processes() == 0) and (len(self.job_list) == 0):
+            self.done = True
+            print("All jobs completed!")
+            self.end_time = time.time()
+            self.total_time = self.end_time - self.start_time
+            print("Took approximately {}.".format(seconds_to_timecode(self.total_time)))
+        else:
+            while (self.count_active_processes() < self.max_processes) and (len(self.job_list) > 0):
+                self.start_job()
+
+            # Schedule next periodic check
+            Timer(self.refresh_interval, self.periodic).start()
+
+    def add_job(self, job):
+        if type(job) == MediaConverter:
+            self.job_list.append(job)
+        else:
+            print("add_job(job) takes a MediaConverter object, received {}".format(type(job)))
+            print("\tQuitting now for safety...")
+            exit()
+
+    def add_jobs(self, jobs):
         for job in jobs:
-            self.jobList.append(job)
+            self.add_job(job)
 
-    def jobsDone(self):
+    def jobs_done(self):
         if len(self.jobList) < 1:
             print("Job's done!")
         else:
             print("Next job is: " + self.jobList[0].fileName)
         pass
 
-    def jobCanceled(self):
-        print("Job canceled.")
-
-    def writeToLog(self, logText):
+    def job_cancelled(self):
         pass
 
-    def openLog(self):
+    def write_log(self, logText):
         pass
 
-class StreamSaver(Thread):
+    def open_log(self):
+        pass
+
+
+class StreamSaver:
     def __init__(self, input_stream, output_file_path_ts):
-        Thread.__init__(self)
         self.file_writer = None
         directory, file_name = path.split(output_file_path_ts)
 
@@ -304,7 +381,8 @@ class StreamSaver(Thread):
     def quit(self):
         pass
 
-class MediaConverter():
+
+class MediaConverter:
     """ Holds settings that get turned into an arg array for ffmpeg conversion
     """
     def __init__(self, mediaObject, outputFilePath='', debug=False):
@@ -322,7 +400,12 @@ class MediaConverter():
         if self.mediaObject.streams == []:
             self.mediaObject.run()
 
-        self.inputFilePath = self.mediaObject.format['filename']
+        try:
+            self.inputFilePath = self.mediaObject.format['filename']
+        except KeyError:
+            self.inputFilePath = self.mediaObject.filePath
+            print("Filename not found in format dictionary for file {}".format(self.mediaObject.fileName))
+            print()
         self.inputFileName = path.basename(self.inputFilePath)
         inDir, inFileName = path.split(self.mediaObject.filePath)
         outDir, outFileName = path.split(outputFilePath)
@@ -360,8 +443,10 @@ class MediaConverter():
         outputDirectory, outputFilename = path.split(self.outputFilePath)
         if not os.path.isdir(outputDirectory):
             os.mkdir(outputDirectory)
-
+        startTime= time.time()
         subprocess.run(self.argsArray)
+        endTime = time.time()
+        return endTime - startTime
 
     def clip(self, startingTime, endingTime):
         self.generateArgsArray(startTime=startingTime, endTime=endingTime)
@@ -431,9 +516,9 @@ class MediaConverter():
                     raise ValueError("No desired rate factor specified with constant rate factor encoding selected. Please"
                                      " specify a rate factor with createVideoSetting(... rateConstant= ...)")
 
-                if not (isinstance(rateConstant, float) or isinstance(rateConstant, int)) or rateConstant < 4 or rateConstant > 63:
+                if not (isinstance(rateConstant, float) or isinstance(rateConstant, int)) or rateConstant < 0 or rateConstant > 63:
                     raise ValueError("'rateConstant' parameter not understood. Constant Rate Factor must "
-                                     "be an integer between 0 and 51")
+                                     "be an integer between 4 and 63")
 
                 if isinstance(rateConstant, float):
                     rateConstant = int(round(rateConstant))
@@ -588,10 +673,10 @@ class MediaConverter():
                 print('self.speed: ' + str(stream['speed']))
                 print('self.bitrateMode: ' + str(stream['bitrateMode']))
 
-                if str(stream['bitrateMode']) == 'cbr':
-                    print('self.cbr: ' + str(stream['cbr']) + " kbits/s")
-                elif str(stream['bitrateMode']) == 'crf':
-                    print('self.crf: ' + str(stream['crf']))
+                # if str(stream['bitrateMode']) == 'cbr':
+                #     print('self.cbr: ' + str(stream['cbr']) + " kbits/s")
+                # elif str(stream['bitrateMode']) == 'crf':
+                #     print('self.crf: ' + str(stream['crf']))
 
             print()
 
@@ -716,12 +801,18 @@ class MediaConverter():
                     array.append(arg)
 
         def fastSeek(startTime, endTime):
-            if timecode_to_seconds(startTime) < 45:
+            """
+            Calculates the timecodes to fast-seek (jumps to nearest key-frame past this timecode) start/stop timecodes
+            :param startTime: Timecode of where the video should be fully decoded
+            :param endTime: Timecode of when to stop decoding/transcoding
+            :return: fastSeekTime, startTime, endTime, all timecodes
+            """
+            slow_seek_gap = 90 # gap in seconds between when fastseek stops and video is fully decoded to startTime
+            if timecode_to_seconds(startTime) < slow_seek_gap + 15:
                 fastSeekTime = '00:00:00'
             else:
-                fastSeekTime = subtract_timecodes(startTime, '00:00:30')
-
-            startTime = subtract_timecodes(startTime, fastSeekTime)
+                fastSeekTime = subtract_timecodes(seconds_to_timecode(slow_seek_gap), startTime)
+            startTime = subtract_timecodes(fastSeekTime, startTime)
             endTime = subtract_timecodes(fastSeekTime, endTime)
 
             if self.debug:
@@ -780,17 +871,26 @@ class MediaConverter():
                 vidString = ' -c:v ' + ffVideoEncoderNames[stream['videoEncoder']]
 
                 if stream['bitrateMode'] == 'cbr':
-                    vidString += ' -b:v ' + str(stream['rateConstant']) + 'k'
+                    if stream['videoEncoder'] == 'vp9' or 'vp8':
+                        vidString += ' -minrate ' + str(stream['rateConstant']) + 'k' + ' -maxrate ' \
+                                     + str(stream['rateConstant']) + 'k' + ' -b:v ' + str(stream['rateConstant']) + 'k'
+                    else:
+                        vidString += ' -b:v ' + str(stream['rateConstant']) + 'k'
                 elif stream['bitrateMode'] == 'crf':
-                    vidString += ' -crf ' + str(stream['rateConstant'])
-                elif stream['bitrateMode'] == 'vbr': # todo Check out ffmpeg's vp8 encoding guide, add that stuff
+                    if stream['videoEncoder'] == 'vp9':
+                        vidString += ' -crf ' + str(stream['rateConstant']) + ' -b:v 0 '
+                    else:
+                        vidString += ' -crf ' + str(stream['rateConstant'])
+
+                elif stream['bitrateMode'] == 'vbr':  # todo Check out ffmpeg's vp8/vp9 encoding guide, add that stuff
                     vidString += ' -b:v ' + str(stream['rateConstant']) + 'k'
                 else:
                     warnings.warn("'bitrateMode' not understood in generateArgsArray. Should be 'cbr', 'vbr', 'crf'.")
 
                 vidString += ' -vf scale=' + str(stream['width']) + ":" + str(stream['height'])
 
-                vidString += ' -preset ' + str(stream['speed'])
+                if stream['videoEncoder'] == 'x264' or stream['videoEncoder'] == 'x265':
+                    vidString += ' -preset ' + str(stream['speed'])
 
                 addArgsToArray(vidString, self.argsArray)
                 vidStrings.append(vidString)
@@ -835,8 +935,13 @@ class MediaConverter():
                     addArgsToArray('-b:a:' + str(streamIndex) + ' ' + str(stream['audioBitrate']) + 'k ', self.argsArray)
                     if stream['audioBitrate'] != 128:
                         addArgsToArray('-vbr constrained', self.argsArray)
+            # elif stream['audioEncoder'] == 'fdk':
+            #     if stream['audioChannels'] == 'mono':
+            #
+            #     else:
+            #         addArgsToArray('-c:a:{} {} -profile=aac_low'.format(streamIndex, ffAudioEncoderNames[stream['audioEncoder']]), self.argsArray)
             else:
-                addArgsToArray('-c:a' + str(streamIndex) + '' + str(ffAudioEncoderNames[stream['audioEncoder']]), self.argsArray)
+                addArgsToArray('-c:a:' + str(streamIndex) + ' ' + str(ffAudioEncoderNames[stream['audioEncoder']]), self.argsArray)
                 addArgsToArray('-b:a:' + str(streamIndex) + ' ' + str(stream['audioBitrate']) + 'k ', self.argsArray)
 
             streamIndex += 1
@@ -884,7 +989,8 @@ class MediaConverter():
     def createOtherSettings(self, mediaObject):
         pass
 
-class MediaObject():
+
+class MediaObject:
     """ An object that holds information relevant to manipulating and transcoding a file with ffmpeg. Uses ffprobe to
      find information and stores it as nested dictionaries in MediaObject.streams[] and MediaObject.format{}.
      Contains methods to help find keys and/or values in streams and streams with keys and/or values.
@@ -943,6 +1049,7 @@ class MediaObject():
 
         argsArray = ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', '-i', self.filePath]
         try:
+            print("Creating MediaObject of: " + str(self.filePath))
             self.ffprobeOut = subprocess.check_output(argsArray).decode("utf-8")
         except subprocess.CalledProcessError as cpe:
             warnings.warn("CalledProcessError with " + self.filePath + " in MediaObject.run()."
@@ -952,7 +1059,7 @@ class MediaObject():
             self.fileIsValid = False
 
         if self.fileIsValid:
-            print("Created MediaObject of: " + str(self.filePath))
+
             self.parseStreams()
             self.parseMetaInfo()
 
@@ -1029,28 +1136,33 @@ class MediaObject():
         :return:
         """
         ffProbeInfo = json.loads(self.ffprobeOut, object_hook=lambda d: Namespace(**d))
-        self.duration = float(json.loads(self.ffprobeOut)['format']['duration'])
-        # print(ffProbeInfo)
+
+        try:
+            # print(self.ffprobeOut)
+            self.duration = float(json.loads(self.ffprobeOut)['format']['duration'])
+
+        except KeyError:
+            print("Extracting duration from video stream...")
+            print("\t"+self.filePath)
+            self.duration = timecode_to_seconds(json.loads(self.ffprobeOut)['streams'][0]['tags']['DURATION'])
+            print("Extracted duration is {}\n".format(self.duration))
+
         i = 0
         for stream in ffProbeInfo.streams:
             streamDict = {}
             self.streams.append(streamDict)
             self.namespaceToDict(stream, '', -1, self.streams[i])
             i += 1
-        # print()
-        # print(self.streams)
         for stream in self.streams:
-            # stream = sorted(stream)
-            # print(stream)
             if stream['codec_type'] == "video":
-                # print("Stream " + str(stream['index']) + " is a video stream.")
                 self.videoStreams.append(stream['index'])
                 try:
                     self.video_bitrate += int(self.getValueFromKey('bit_rate', stream))
                 except TypeError as te:
-                    print("File {} does not have a 'bitrate' attribute in video stream. Attempting to infer from audio".format(self.fileName))
-                    print(stream)
-                    print("With file {}".format(self.fileName))
+                    pass
+                    # print("File {} does not have a 'bitrate' attribute in video stream. Attempting to infer from audio".format(self.fileName))
+                    # print(stream)
+                    # print("With file {}".format(self.fileName))
 
                 framerate = self.getValueFromKey('r_frame_rate', stream)
                 num, denom = framerate.split('/')
@@ -1077,9 +1189,10 @@ class MediaObject():
                 try:
                     self.audio_bitrate += int(self.getValueFromKey('bit_rate', stream))
                 except TypeError as te:
-                    print("File {} does not have a 'bitrate' attribute in audio stream. Attempting to infer from audio".format(self.fileName))
-                    print(stream)
-                    print("With file {}".format(self.fileName))
+                    pass
+                    # print("File {} does not have a 'bitrate' attribute in audio stream. Attempting to infer from audio".format(self.fileName))
+                    # print(stream)
+                    # print("With file {}".format(self.fileName))
 
             elif stream['codec_type'] == "subtitle":
                 # print("Stream " + str(stream['index']) + " is a subtitle stream.")
@@ -1093,22 +1206,20 @@ class MediaObject():
                 # print("Stream " + str(stream['index']) + " is an unrecognized stream.")
                 self.unrecognizedStreams.append(stream['index'])
 
-        if self.fileName == 'MXGS-747.mkv':
-            print(self.fileName)
 
         if self.video_bitrate == 0 and self.audio_bitrate == 0:
             self.audio_bitrate = 128000
-            print("Can't infer either video or audio bitrates."
-                  " Assuming audio bitrate of {} kb/s to infer video bitrate".format(self.audio_bitrate/1000))
+            # print("Can't infer either video or audio bitrates."
+            #       " Assuming audio bitrate of {} kb/s to infer video bitrate".format(self.audio_bitrate/1000))
 
             self.video_bitrate = (8 * self.file_size - self.audio_bitrate * self.duration) / self.duration
 
         elif self.video_bitrate == 0:
-            print("Infering video bitrate from audio bitrate...")
+            # print("Infering video bitrate from audio bitrate...")
             self.video_bitrate = (8 * self.file_size - self.audio_bitrate * self.duration) / self.duration
 
         elif self.audio_bitrate == 0:
-            print("Infering audio bitrate from video bitrate...")
+            # print("Infering audio bitrate from video bitrate...")
             self.audio_bitrate = (8 * self.file_size - self.video_bitrate * self.duration) / self.duration
 
         # choosing default self.width and self.height from multiple streams, always pick the largest and matching

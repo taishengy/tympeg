@@ -1,6 +1,14 @@
 from pympeg import *
 import time
+from os import path
 import io
+
+
+def split_ext(file_name):
+    index = file_name.rfind('.')
+    name = file_name[:index]
+    ext = file_name[index:]
+    return name, ext
 
 
 def list_dirs(dir_path):
@@ -19,19 +27,45 @@ def list_files(dir_path):
     return files
 
 
-def concat_files_in_directory(input_dir_path, alphabetical=True):
+def concat_files_in_directory(input_dir_path, alphabetical=True, delete_source=False, output_dir_path=""):
     """
-    Attempts to concat ALL files in a directory, be careful!
+    Attempts to concat ALL files in a directory, be careful! Places file in parent folder with first file's name
+    then deletes source files if specified.
     :param input_dir_path: string, path to directory of files to be concatenated
     :param alphabetical: boolean, whether or not to alphabetize the files during concatenation
-    :return: void
+    :param delete_source: boolean, deletes source files when completed
+    :param output_dir_path: string, optionally specify output directory
+    :return: string, path of output file
     """
 
     media_object_array = makeMediaObjectsInDirectory(input_dir_path)
     if alphabetical:
         media_object_array = sorted(media_object_array, key=lambda media: media.fileName)
-    output_path, tail = path.split(input_dir_path)
-    ffConcat(media_object_array, path.join(output_path, media_object_array[0].fileName))
+
+    # Decide output path, either parameter or default
+    if output_dir_path != "":
+        output_dir = output_dir_path
+    else:
+        output_dir, tail = path.split(input_dir_path)
+
+    # Output filename is just the first file in the array of source files
+    output_path = path.join(output_dir, media_object_array[0].fileName)
+
+    files = list_files(input_dir_path)
+    num_files = len(files)
+
+    if num_files == 1:  # if the directory only has one file, just move it
+        os.rename(files[0], path.join(output_path))
+    elif num_files == 0:  # nothing in the dir, just return
+        return
+    else:
+        ffConcat(media_object_array, output_path)
+        if delete_source and path.isfile(output_path):  # Double check output file exists!
+            for file in files:
+                os.remove(file)
+            os.rmdir(input_dir_path)
+
+    return output_path
 
 
 def quick_clip(file_path, start_time, end_time, output_path=''):
@@ -184,37 +218,37 @@ def convert_folder_x265_profile(input_folder, profile):
                                    audio_bitrate, channels)
 
 
-def concat_files_grouped_in_folders(parent_dir):
+def concat_files_grouped_in_folders(parent_dir, alphabetical=True, delete_source=False):
     dirs = list_dirs(parent_dir)
+    print(dirs)
     for directory in dirs:
         print(directory)
-        concat_files_in_directory(directory)
+        concat_files_in_directory(directory, alphabetical, delete_source)
 
 
-def decide_x265_quality(media_object):
-    duration = media_object.duration
-    file_size = media_object.file_size
-    width = media_object.width
-    height = media_object.height
-    pixels = media_object.width * media_object.height
-    video_bitrate = media_object.video_bitrate
-    audio_bitrate = media_object.audio_bitrate
-    framerate = media_object.framerate_dec
-
-    bits_pixel = video_bitrate / (pixels * framerate)
-
-    print("Duration: {}".format(duration))
-    print("FileSize: {}".format(file_size))
-    print("Width: {}".format(width))
-    print("Height: {}".format(height))
-    print("Pixels: {}".format(pixels))
-    print("Video Bitrate: {}".format(video_bitrate))
-    print("Audio Bitrate: {}".format(audio_bitrate))
-    print("Video Framerate: {}".format(framerate))
-    print("Bits per Pixel: {}".format(bits_pixel))
+def calc_bits_per_pixel(media_object):
+    media = media_object
+    video_bitrate = media.video_bitrate
+    pixels = media.width * media.height
+    framerate = media.framerate_dec
+    try:
+        bits_pixel = video_bitrate / (pixels * framerate)
+    except TypeError as te:
+        print(te)
+        print(media.fileName)
+        bits_pixel = -1
+    return bits_pixel
 
 
 def save_bits_per_pixel_dist(parent_dir, output_file_path, exclude_codec):
+    """ Calculates the bits/pixel of files in parent_dir and outputs data as a csv. Useful for visualizing
+    bits/pixel in excel/calc to define intervals in convert_sub_dirs.py or more introspection.
+
+    :param parent_dir: string, Path of directory that contains media files to analyze
+    :param output_file_path: string, path of where you want the .csv file
+    :param exclude_codec: string, codec of files you want to exclude 'hevc' for 265 and 'avc1' for 264
+    :return:
+    """
     directories = sorted(list_dirs(parent_dir))
     with open(output_file_path, 'w', encoding='utf8') as file:
         file.write("{},{} bits,{} bits,{} bytes,{}\n".format("bits/pixel", "video bitrate", "audio bitrate", "file size", "file path"))
@@ -223,17 +257,21 @@ def save_bits_per_pixel_dist(parent_dir, output_file_path, exclude_codec):
 
             for media in media_array:
                 if media.videoCodec != exclude_codec:
+                    bits_pixel = calc_bits_per_pixel(media)
                     video_bitrate = media.video_bitrate
-                    pixels = media.width * media.height
-                    framerate = media.framerate_dec
-                    try:
-                        bits_pixel = video_bitrate / (pixels * framerate)
-                    except TypeError as te:
-                        print(te)
-                        print(media.fileName)
-                        bits_pixel = -1
 
                     file.write("{},{},{},{},{}\n".format(bits_pixel, video_bitrate, media.audio_bitrate,media.file_size, media.filePath))
-            file.close()
+        file.close()
 
+
+def make_webm(filepath, start_timecode, end_timecode, video_quality, audio_bitrate=64, audio_channels='mono', output_path=""):
+    media = MediaObject(filepath)
+    if output_path == "":
+        output_dir, output_filename = path.split(filepath)
+        name, ext = split_ext(output_filename)
+        output_path = path.join(output_dir, name, ".webm")
+    cvt = MediaConverter(media, output_path)
+    cvt.createVideoStream('vp9', 'crf', video_quality)
+    cvt.createAudioStream(audioStream=cvt.mediaObject.audioStreams[0], audioBitrate=audio_bitrate, audioChannels=audio_channels)
+    cvt.clip(start_timecode, end_timecode)
 
