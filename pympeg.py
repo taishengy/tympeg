@@ -385,16 +385,19 @@ class StreamSaver:
 class MediaConverter:
     """ Holds settings that get turned into an arg array for ffmpeg conversion
     """
-    def __init__(self, mediaObject, outputFilePath='', debug=False):
+    def __init__(self, mediaObject, outputFilePath='', debug=False, verbosity=24):
         """ Generates a ConversionSettings object. Populate fields with createXSettings() Methods.
 
-        :param mediaObject:  ConversionSettings
-        :param outputFilePath: string
+        :param mediaObject:  MediaObject of file to be created
+        :param outputFilePath: string, file path of output file
+        :param debug: bool, whether or not to print certain messages helpful with debugging
+        :param verbosity: int, level of ffmpeg verbosity. Integers correspond to ffmpeg's -loglevel options
         :return:
         """
         # general conversion settings
         self.mediaObject = mediaObject
         self.debug = debug
+        self.verbosity = verbosity
 
         # parse MediaObject if it hasn't been done
         if self.mediaObject.streams == []:
@@ -824,6 +827,8 @@ class MediaConverter:
         streamCopy = False
         cut = False
 
+        addArgsToArray('-v ' + str(self.verbosity), self.argsArray)
+
         if (startTime != '0') and (endTime != '0'):
             cut = True
 
@@ -840,8 +845,6 @@ class MediaConverter:
             addArgsToArray('-i', self.argsArray)
             self.argsArray.append(str(self.mediaObject.filePath))
 
-        addArgsToArray('-v', self.argsArray)
-        addArgsToArray('24', self.argsArray)
 
         fileIndex = '0:'
 
