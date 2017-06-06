@@ -1,0 +1,13 @@
+Move away from -b:v and -b:a to b:v:index, etc to enable different bitrates per stream
+Make encoders directly callable/configurable
+    need parsers for each encoder's args
+
+ArgArray for vpx (cbr, crf, AND vbr)
+Add other audio encoders (lamemp3, fdk-aac, flac)
+Print MediaConverter output streams and settings
+
+Longterm
+implement ISO-693x for language dictionaries?
+MediaStream objects instead of passing around indexes and stuff
+MediaConverterQueue (Queueing, progress reports, error handling, etc...)
+MediaConverterQueue, skipping, interrupting, sanity checks?, etc... 

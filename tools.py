@@ -1,71 +1,11 @@
+from mediaobject import makeMediaObjectsInDirectory, MediaObject
+from converter import MediaConverter
+from concat import concat_files_in_directory
+from util import get_dir_size, list_dirs, split_ext
+
 from pympeg import *
 import time
 from os import path
-import io
-
-
-def split_ext(file_name):
-    index = file_name.rfind('.')
-    name = file_name[:index]
-    ext = file_name[index:]
-    return name, ext
-
-
-def list_dirs(dir_path):
-    dirs = []
-    for item in os.listdir(dir_path):
-        if os.path.isdir(os.path.join(dir_path, item)):
-            dirs.append(os.path.join(dir_path, item))
-    return dirs
-
-
-def list_files(dir_path):
-    files = []
-    for item in os.listdir(dir_path):
-        if path.isfile(path.join(dir_path, item)):
-            files.append(path.join(dir_path, item))
-    return files
-
-
-def concat_files_in_directory(input_dir_path, alphabetical=True, delete_source=False, output_dir_path=""):
-    """
-    Attempts to concat ALL files in a directory, be careful! Places file in parent folder with first file's name
-    then deletes source files if specified.
-    :param input_dir_path: string, path to directory of files to be concatenated
-    :param alphabetical: boolean, whether or not to alphabetize the files during concatenation
-    :param delete_source: boolean, deletes source files when completed
-    :param output_dir_path: string, optionally specify output directory
-    :return: string, path of output file
-    """
-
-    media_object_array = makeMediaObjectsInDirectory(input_dir_path)
-    if alphabetical:
-        media_object_array = sorted(media_object_array, key=lambda media: media.fileName)
-
-    # Decide output path, either parameter or default
-    if output_dir_path != "":
-        output_dir = output_dir_path
-    else:
-        output_dir, tail = path.split(input_dir_path)
-
-    # Output filename is just the first file in the array of source files
-    output_path = path.join(output_dir, media_object_array[0].fileName)
-
-    files = list_files(input_dir_path)
-    num_files = len(files)
-
-    if num_files == 1:  # if the directory only has one file, just move it
-        os.rename(files[0], path.join(output_path))
-    elif num_files == 0:  # nothing in the dir, just return
-        return
-    else:
-        ffConcat(media_object_array, output_path)
-        if delete_source and path.isfile(output_path):  # Double check output file exists!
-            for file in files:
-                os.remove(file)
-            os.rmdir(input_dir_path)
-
-    return output_path
 
 
 def quick_clip(file_path, start_time, end_time, output_path=''):
