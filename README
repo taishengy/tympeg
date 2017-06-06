@@ -1,7 +1,15 @@
 A python3 wrapper for ffmpeg. Focused on scripting video file conversions.
 
 This wrapper helps parse information about media files with ffprobe, and does it's transcoding
-through ffmpeg. Look through the examples file to see what's possible. Don't expect it to be 
-particularily pythonic.
+through ffmpeg. 
 
-FFMPEG needs to be installed, building itself with non-free codecs is recommended.
+Currently has strong support for:
+  Stream metadata and analysis
+  Converting files progmattically
+  Snipping clips out of video files
+  Concatenating video files
+  Saving HLS streams to disk
+
+Look through the pympeg_examples.py, tools.py, and some of the scripts for pragmatic examples of varying complexities.
+
+FFMPEG needs to be installed and in your PATH, non-free codecs ARE supported, so have fun.
