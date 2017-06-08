@@ -1,0 +1,9 @@
+# Untracked files:
+*__pycache__*
+sandbox.py
+test.py
+dist/*
+build/*
+.idea/*
+testmedia/*
+tympeg.egg-info/*
