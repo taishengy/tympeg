@@ -6,7 +6,7 @@ import sys
 import time
 from os import path
 
-from pympeg import makeMediaObjectsInDirectory, MediaConverter, MediaConverterQueue, seconds_to_timecode
+from tympeg import makeMediaObjectsInDirectory, MediaConverter, MediaConverterQueue, seconds_to_timecode
 
 from tympeg.tools import calc_bits_per_pixel, split_ext
 

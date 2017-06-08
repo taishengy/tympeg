@@ -6,7 +6,7 @@ from __future__ import print_function
 
 import os, sys, time, math
 
-from pympeg import MediaObject
+from tympeg import MediaObject
 
 from PyQt5.QtGui import QTextCursor
 from PyQt5 import QtCore
