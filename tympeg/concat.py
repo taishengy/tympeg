@@ -1,8 +1,9 @@
-from mediaobject import MediaObject, makeMediaObjectsInDirectory
-from util import list_files
-
-from os import path, getcwd, remove, rename, rmdir
 import subprocess
+from os import path, getcwd, remove, rename, rmdir
+
+from .mediaobject import MediaObject, makeMediaObjectsInDirectory
+
+from .util import list_files
 
 
 def ffConcat(mediaObjectArray, outputFilepath):

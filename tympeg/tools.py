@@ -1,11 +1,12 @@
-from mediaobject import makeMediaObjectsInDirectory, MediaObject
-from converter import MediaConverter
-from concat import concat_files_in_directory
-from util import get_dir_size, list_dirs, split_ext
-
-from pympeg import *
+# from tympeg import
 import time
-from os import path
+from os import path, mkdir, rename
+
+from .converter import MediaConverter
+from .mediaobject import makeMediaObjectsInDirectory, MediaObject
+from .util import get_dir_size, list_dirs, split_ext
+
+from .concat import concat_files_in_directory
 
 
 def quick_clip(file_path, start_time, end_time, output_path=''):
@@ -60,8 +61,8 @@ def convert_files_in_dir_to_vcodec(input_folder, video_codec, video_encoder, rat
         if media.videoCodec != str(video_codec):
             nothing_to_convert = False
             if not path.isdir(original_files_dir):
-                os.mkdir(original_files_dir)
-            os.rename(path.join(input_folder, str(media.fileName)), path.join(original_files_dir, str(media.fileName)))
+                mkdir(original_files_dir)
+            rename(path.join(input_folder, str(media.fileName)), path.join(original_files_dir, str(media.fileName)))
 
     # convert files in original_files folder
     if nothing_to_convert:

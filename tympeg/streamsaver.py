@@ -1,6 +1,7 @@
 import subprocess
 from os import path, mkdir
-from util import renameFile
+
+from tympeg.util import renameFile
 
 
 class StreamSaver:

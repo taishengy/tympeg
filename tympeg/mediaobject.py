@@ -1,4 +1,4 @@
-from timecode import timecode_to_seconds
+from .timecode import timecode_to_seconds
 
 from os import path, listdir
 import subprocess

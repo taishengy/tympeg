@@ -4,18 +4,17 @@ calculate the bits/pixel of each file and uses a user specified crf quality for 
 uses a user specified default CRF and audio bitrate & channel setup. Prints helpful stats and can save a log
 file to each sub directory."""
 
+import datetime
 import os
 import sys
-import datetime
 import time
 
-from tools import calc_bits_per_pixel, split_ext
-from pympeg import makeMediaObjectsInDirectory, MediaConverter, get_dir_size
+from tympeg import MediaConverter, makeMediaObjectsInDirectory, calc_bits_per_pixel, split_ext, get_dir_size
 
 # This will convert all files in /media/folder1 and /media/folder2 (non-recursive) and will place a log file in each folder
 parent_dir = '/media/'
 dirs_to_convert = ['folder1', 'folder2']
-speed = 'superfast'  # Reminder: this is x265, don't expect x264 speeds
+speed = 'veryfast'  # Reminder: this is x265, don't expect x264 speeds
 log_file = True
 
 # Quality intervals for quality dicts: X & Y are bits/pixel thresholds; a, b, & c are crfs corresponding to intervals

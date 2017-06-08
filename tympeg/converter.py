@@ -1,12 +1,13 @@
-from mediaobject import MediaObject
-from util import renameFile
-from timecode import timecode_to_seconds, seconds_to_timecode, subtract_timecodes
-
-
-from os import path, mkdir
+from tympeg.util import renameFile
 import subprocess
 import time
 import warnings
+from os import path, mkdir
+
+from .timecode import timecode_to_seconds, seconds_to_timecode, subtract_timecodes
+
+from .util import renameFile
+
 
 class MediaConverter:
     """ Holds settings that get turned into an arg array for ffmpeg conversion

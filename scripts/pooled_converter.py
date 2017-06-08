@@ -2,12 +2,13 @@
 convert_sub_dirs.py. Useful for batch converting lower resolution video files that can't fully use all cores. """
 
 import os
-from os import path
 import sys
-
-from tools import calc_bits_per_pixel, split_ext
-from pympeg import makeMediaObjectsInDirectory, MediaConverter, MediaConverterQueue, seconds_to_timecode
 import time
+from os import path
+
+from pympeg import makeMediaObjectsInDirectory, MediaConverter, MediaConverterQueue, seconds_to_timecode
+
+from tympeg.tools import calc_bits_per_pixel, split_ext
 
 """Converts media files in specified sub directories of parent_dir to x265 video and opus audio. Keeps only the
 first video and audio stream found.Doesn't attempt to retain subtitles or attachment streams. Attempts to

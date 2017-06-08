@@ -1,9 +1,10 @@
-from timecode import seconds_to_timecode
-from converter import MediaConverter
-
-from multiprocessing import Process
 import time
+from multiprocessing import Process
 from threading import Timer
+
+from .timecode import seconds_to_timecode
+
+from .converter import MediaConverter
 
 
 class MediaConverterQueue:
