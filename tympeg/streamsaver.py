@@ -2,6 +2,9 @@ import subprocess
 from os import path, mkdir
 
 from tympeg.util import renameFile
+import platform
+import signal
+import sys
 
 
 class StreamSaver:
@@ -25,7 +28,7 @@ class StreamSaver:
                      '-probesize', str(self.probesize), '-i', str(input_stream), '-c', 'copy', output_file_path_ts]
 
     def run(self):
-        self.file_writer = subprocess.run(self.args)
+        self.file_writer = subprocess.Popen(self.args)
 
     def quit(self):
-        pass
+        self.file_writer.terminate()
