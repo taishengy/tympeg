@@ -2,9 +2,6 @@ import subprocess
 from os import path, mkdir
 
 from tympeg.util import renameFile
-import platform
-import signal
-import sys
 
 
 class StreamSaver:
