@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 setup(
     name="tympeg",
-    version="0.2",
+    version="0.2.2",
     packages=find_packages(),
     scripts=[],
 
@@ -19,12 +19,7 @@ setup(
     # metadata for upload to PyPI
     author="TaiSheng Yeager",
     author_email="taishengyeager@gmail.com",
-    description="This package makes common ffmpeg functions easier such as:"
-                "\tConverting files to new encodings"
-                "\tClipping sections of files"
-                "\tConcatanating files"
-                "\tMetadata analysis"
-                "\tSaving HLS streams",
+    description="Yet another scripting solution for ffmpeg operations: Converting, concatanating, saving HLS streams, meta-data analysis",
     license="MIT",
     keywords="ffmpeg video audio subtitle HLS stream",
     url="https://github.com/taishengy/tympeg",   # project home page, if any
