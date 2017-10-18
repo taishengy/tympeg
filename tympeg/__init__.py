@@ -4,7 +4,7 @@ from .mediaobject import MediaObject, makeMediaObjectsInDirectory
 from .converter import MediaConverter
 from .queue import MediaConverterQueue
 from .concat import ffConcat, concat_files_in_directory
-from .util import split_ext, list_dirs, list_files, get_dir_size, MBtokb, renameFile
+from .util import split_ext, list_dirs, list_files, get_dir_size, MBtokb, renameFile, get_dir_size_recursive
 from .streamsaver import StreamSaver
 from .tools import *
 
