@@ -9,11 +9,25 @@ import os
 import sys
 import time
 
-from tympeg import MediaConverter, makeMediaObjectsInDirectory, calc_bits_per_pixel, split_ext, get_dir_size
+from .. import MediaConverter, makeMediaObjectsInDirectory, calc_bits_per_pixel, split_ext, get_dir_size
 
 # This will convert all files in /media/folder1 and /media/folder2 (non-recursive) and will place a log file in each folder
-parent_dir = '/media/'
-dirs_to_convert = ['folder1', 'folder2']
+# parent_dir = '/media/'
+# dirs_to_convert = ['folder1', 'folder2']
+# parent_dir = '/media/veracrypt3/IV/Actresses/'
+# dirs_to_convert = ['Mayumi Yamanaka', 'Nagai Sumire (永井すみれ)', 'Aya Kawasaki', 'Tomoe Yamanaka', 'Seira Sato 佐藤聖羅',
+#                    'Koyanagi Yui (小柳結衣)', 'Hina Seto 瀬戸ひな', 'Gemma ジェマ', 'Mikuni Saran 三國さらん',
+#                    'Asakura Mina 麻倉みな', 'Ami Sasano 佐々野愛美', 'Ren Ishikawa 石川恋', 'Ui Mita 三田羽衣', 'Miyabi Seno',
+#                    'Kei Jonishi 上西恵', 'Mayu Koseta', 'Erina Sakura 桜井えりな', 'Izumi Saeki 佐伯いずみ',
+#                    'Koharu Nishino 西野小春', 'Anna Hongo 本郷杏奈', 'Emi Ito 伊藤えみ', 'Tsukasa Kanzaki 神前つかさ',
+#                    'Sayaka Hoshijima 星島沙也加', 'Minori Minudo 犬童美乃梨', 'Sayaka Etou 江藤彩也香', 'Emi Kobayashi',
+#                    'Saki Morimura 森村さき', 'Miyawaki Mana', 'Hikaru Aoyama (青山ひかる)', ]
+
+parent_dir = '/media/veracrypt2/JAV/Actresses/'
+dirs_to_convert = ['Tsubasa Hinagaku', 'Aise Miki', 'Amano Miyuu', 'Mizuki Ren', 'Himekawa Yuuna', 'Matsumoto Nanae',
+                   'Kururigi Aoi', 'Egami Shiho', 'Yurisaki Urumi', 'Tachibana Yuuka', 'Igarashi Seiran', 'Yui Hatano',
+                   'Toda Makoto']
+
 speed = 'veryfast'  # Reminder: this is x265, don't expect x264 speeds
 log_file = True
 
@@ -103,7 +117,7 @@ def convert_folder_x265(dir_path, qualities, speed, log=True):
     #     print("\n\nNo files to convert in {}, breaking...\n\n".format(dir_path))
     #     return
 
-    if not os.path.isdir(original_files_dir) and len(files_to_move) > 0:
+    if not os.path.isdir(original_files_dir):
         os.mkdir(original_files_dir)
     for media in files_to_move:
         try:
@@ -145,15 +159,23 @@ def convert_folder_x265(dir_path, qualities, speed, log=True):
         print("Using profile")
 
         cvt = MediaConverter(media, output_file_path)
+        audio = True
+        video = True
 
         try:
             cvt.createVideoStream(codec, 'crf', video_rate, speed)
         except IndexError:
             lo.pl("NO VIDEO FOUND")
+            video = False
         try:
             cvt.createAudioStream(media.audioStreams[0], 'opus', audioBitrate=audio_rate, audioChannels=channels)
         except IndexError:
             lo.pl("NO AUDIO FOUND")
+            audio = False
+
+        if not audio and not video:
+            print("\nNo audio or video found, skipping...")
+            continue
 
         sec = cvt.convert()
         end = time.time()

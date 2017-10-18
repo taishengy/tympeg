@@ -6,9 +6,9 @@ import sys
 import time
 from os import path
 
-from tympeg import makeMediaObjectsInDirectory, MediaConverter, MediaConverterQueue, seconds_to_timecode
+from .. import makeMediaObjectsInDirectory, MediaConverter, MediaConverterQueue, seconds_to_timecode
 
-from tympeg.tools import calc_bits_per_pixel, split_ext
+from .. import calc_bits_per_pixel, split_ext
 
 """Converts media files in specified sub directories of parent_dir to x265 video and opus audio. Keeps only the
 first video and audio stream found.Doesn't attempt to retain subtitles or attachment streams. Attempts to
