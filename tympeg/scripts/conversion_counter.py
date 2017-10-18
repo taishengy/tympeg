@@ -65,7 +65,7 @@ def analyze(directory, target_codec, print_progress=True):
             file_path = os.path.join(directory, dirs, fileNames)
 
             if os.path.isdir(file_path):
-                size_of_other_files += get_directory_size(file_path)
+                size_of_other_files += get_dir_size_recursive(file_path)
 
             else:
                 if any(extensions in fileNames for extensions in file_extensions_to_analyze):
