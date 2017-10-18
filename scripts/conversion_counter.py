@@ -101,7 +101,7 @@ def analyze(directory, target_codec, print_progress=True):
     return printable_list, invalid_files
 
 
-def run(directory, target_codec):
+def run_conversion_counter(directory, target_codec):
 
     printable, invalids = analyze(directory, target_codec)
     print("Saving log to {}".format(directory))
