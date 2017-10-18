@@ -1,4 +1,4 @@
-from os import path, listdir
+from os import path, listdir, walk
 
 
 def split_ext(file_name):
@@ -36,6 +36,7 @@ def get_dir_size(directory_path):
         size += path.getsize(path.join(directory_path, file))
     return size
 
+
 def get_dir_size_recursive(directoryPath):
     """
     Returns the size of a directory's contents (recursive) in bytes.
@@ -44,10 +45,10 @@ def get_dir_size_recursive(directoryPath):
     """
     # Collect directory size recursively
     total_size = 0
-    for dirpath, dirnames, filenames in os.walk(directoryPath):
+    for dirpath, dirnames, filenames in walk(directoryPath):
         for f in filenames:
-            fp = os.path.join(dirpath, f)
-            total_size += os.path.getsize(fp)
+            fp = path.join(dirpath, f)
+            total_size += path.getsize(fp)
     return total_size
 
 

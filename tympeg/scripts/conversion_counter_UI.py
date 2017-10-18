@@ -6,8 +6,7 @@ from __future__ import print_function
 
 import os, sys, time, math
 
-from tympeg import MediaObject
-from tympeg.util import get_dir_size_recursive
+from .. import MediaObject, get_dir_size_recursive
 
 from PyQt5.QtGui import QTextCursor
 from PyQt5 import QtCore

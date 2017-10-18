@@ -1,5 +1,4 @@
-from tympeg.mediaobject import MediaObject
-from tympeg.util import get_dir_size, get_dir_size_recursive
+from .. import MediaObject, get_dir_size_recursive
 import time
 import os
 import math
