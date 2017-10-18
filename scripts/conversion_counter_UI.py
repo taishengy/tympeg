@@ -7,6 +7,7 @@ from __future__ import print_function
 import os, sys, time, math
 
 from tympeg import MediaObject
+from tympeg.util import get_dir_size_recursive
 
 from PyQt5.QtGui import QTextCursor
 from PyQt5 import QtCore
@@ -45,15 +46,6 @@ class Window(QDialog):
         browseContainer.addWidget(saveLogButton)
 
         screen1.addLayout(browseContainer)
-
-    def getDirectorySize(self, directoryPath):
-        #Collect directory size recursively
-        total_size = 0
-        for dirpath, dirnames, filenames in os.walk(directoryPath):
-            for f in filenames:
-                fp = os.path.join(dirpath, f)
-                total_size += os.path.getsize(fp)
-        return total_size
 
     def saveLog(self):
         savedir = self.getDirString()
@@ -106,7 +98,7 @@ class Window(QDialog):
                 filePath = os.path.join(rootdir + dirs, fileNames)
 
                 if os.path.isdir(filePath):
-                    sizeOfOtherFiles += self.getDirectorySize(filePath)
+                    sizeOfOtherFiles += get_dir_size_recursive(filePath)
 
                 else:
                     if any(extensions in fileNames for extensions in fileExtensionsToAnalyze):

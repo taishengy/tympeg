@@ -1,22 +1,9 @@
 from tympeg.mediaobject import MediaObject
-from tympeg.util import get_dir_size
+from tympeg.util import get_dir_size, get_dir_size_recursive
 import time
 import os
 import math
 from os import path
-
-def run(directory, target_codec):
-    pass
-
-
-def get_directory_size(directoryPath):
-    # Collect directory size recursively
-    total_size = 0
-    for dirpath, dirnames, filenames in os.walk(directoryPath):
-        for f in filenames:
-            fp = os.path.join(dirpath, f)
-            total_size += os.path.getsize(fp)
-    return total_size
 
 
 def save_log(directory, printable_list, invalid_files, terse=False):

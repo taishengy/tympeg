@@ -36,6 +36,20 @@ def get_dir_size(directory_path):
         size += path.getsize(path.join(directory_path, file))
     return size
 
+def get_dir_size_recursive(directoryPath):
+    """
+    Returns the size of a directory's contents (recursive) in bytes.
+    :param directoryPath: string, path of directory to be analyzed
+    :return: int, size of sum of files in directory in bytes
+    """
+    # Collect directory size recursively
+    total_size = 0
+    for dirpath, dirnames, filenames in os.walk(directoryPath):
+        for f in filenames:
+            fp = os.path.join(dirpath, f)
+            total_size += os.path.getsize(fp)
+    return total_size
+
 
 def MBtokb(megabytes):
     """ Converts megabytes to kilobits.
