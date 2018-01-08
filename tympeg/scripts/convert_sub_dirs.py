@@ -67,12 +67,13 @@ class PrintLogger:
             log.close()
 
 
-def convert_folder_x265(dir_path, qualities, speed, log=True):
+def convert_folder_x265(dir_path, qualities, speed, autodelete=False, log=True):
     """
     Does the converting of sub directories. A lot of the stuff in here is for reporting stats back to user/log.
     :param dir_path: string, path to directory
     :param qualities: dict, qualities dict, see note at top of file
     :param speed: str, x265 speed parameter
+    :param autodelete: bool, sets if original files should be deleted after conversion
     :param log: bool, True writes log file into directory, False doesn't
     :return:
     """
@@ -176,6 +177,9 @@ def convert_folder_x265(dir_path, qualities, speed, log=True):
         avg_rate = input_file_size/((end - time_start)/60)
         eta_hours, eta_min = divmod(round((total_input_size - input_file_size)/avg_rate, 0), 60)
 
+        if autodelete:
+            os.remove(media.filePath)
+
         lo.pl('\nCompleted file {0} of {1} at {2} in {3:,.2f} min'.format(count, total_files,
                                                                           now.strftime("%I:%M:%S %p"), minutes))
         lo.pl('Completed file at input rate of: {0:,.2f} MB/min'.format(input_rate))
@@ -187,6 +191,15 @@ def convert_folder_x265(dir_path, qualities, speed, log=True):
         lo.pl(sep)
 
         count += 1
+
+    if autodelete:
+        try:
+            os.rmdir(original_files_dir)
+        except OSError:
+            print("{} could not be removed. Most likely because a file wasn't converted because "
+                  "it already exists in the parent directory and the original file is present "
+                  "for your review.")
+
     lo.pl("{:{align}{width}}".format("-------   DONE   -------", align='^', width=len(sep)))
 
 
@@ -196,7 +209,9 @@ def decide_quality(qualities, media_object):
 
     :param qualities: dict, see notes at top of file
     :param media_object: MediaObject
-    :return:
+    :return: Int, crf level
+             Int or Float, audio bitrate
+             Int, audio channels
     """
     q = qualities
     bits_pixel = calc_bits_per_pixel(media_object)
