@@ -178,7 +178,10 @@ def convert_folder_x265(dir_path, qualities, speed, autodelete=False, log=True):
         eta_hours, eta_min = divmod(round((total_input_size - input_file_size)/avg_rate, 0), 60)
 
         if autodelete:
-            os.remove(media.filePath)
+            if os.path.getsize(media.filePath) > os.path.getsize(output_file_path):
+                os.remove(media.filePath)
+            else:
+                print("Output size is larger than input size!")
 
         lo.pl('\nCompleted file {0} of {1} at {2} in {3:,.2f} min'.format(count, total_files,
                                                                           now.strftime("%I:%M:%S %p"), minutes))
@@ -198,7 +201,8 @@ def convert_folder_x265(dir_path, qualities, speed, autodelete=False, log=True):
         except OSError:
             print("{} could not be removed. Most likely because a file wasn't converted because "
                   "it already exists in the parent directory and the original file is present "
-                  "for your review.")
+                  "for your review. An input file could be smaller than an output file, in which"
+                  "case deletion is not done")
 
     lo.pl("{:{align}{width}}".format("-------   DONE   -------", align='^', width=len(sep)))
 

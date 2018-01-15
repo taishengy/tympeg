@@ -9,7 +9,13 @@ def save_log(directory, printable_list, invalid_files, terse=False):
     file_path = path.join(directory, "ConversionLog" + str(time.strftime("%Y%m%d")) + ".txt")
     
     with open(file_path, 'w', encoding="utf8") as log_file:
-        log_file.write("Generated on: {}\n\n\n".format(time.strftime("%b %d %Y, %I:%M %p")))
+        log_file.write("Generated on: {}\n".format(time.strftime("%b %d %Y, %I:%M %p")))
+
+        # Calculate total size of h264 files
+        total_size = 0
+        for n in printable_list:
+            total_size += math.floor((n[0] * 100) /100)
+        log_file.write("Total size of h264 files: {} MB\n\n\n".format(total_size))
 
         # Print the tuples, big numbers first
         for i in range(len(printable_list) - 1, -1, -1):
@@ -103,5 +109,5 @@ def analyze(directory, target_codec, print_progress=True):
 def run_conversion_counter(directory, target_codec):
 
     printable, invalids = analyze(directory, target_codec)
-    print("Saving log to {}".format(directory))
+    print("\n\nSaving log to {}".format(directory))
     save_log(directory, printable, invalids)
