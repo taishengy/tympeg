@@ -42,7 +42,7 @@ class MediaObject:
         self.framerates_frac = []
         self.framerate_dec = []
         self.framerate_frac = []
-        self.duration = 0       # Done
+        self.duration = -1.0    # Done
         self.codecs = []        # Done
         self.streamTypes = []   # Done
         self.videoCodec = ''    # Done
@@ -88,11 +88,25 @@ class MediaObject:
         :return:
         """
 
+        def try_to_get_float(key, default=-1.0):
+            try:
+                value = float(self.format[key])
+            except KeyError:
+                value = default
+            return value
+
+        def try_to_get_int(key, default=-1):
+            try:
+                value = int(self.format[key])
+            except KeyError:
+                value = default
+            return value
+
         ffProbeInfo = json.loads(self.ffprobeOut, object_hook=lambda d: Namespace(**d))
         self.namespaceToDict(ffProbeInfo.format, '', -1, self.format)
-        self.bitrate = int(self.format['bit_rate'])
-        self.duration = float(self.format['duration'])
-        self.size = int(self.format['size'])
+        self.bitrate = try_to_get_int('bit_rate')
+        self.duration = try_to_get_float('duration')
+        self.size = try_to_get_int('size')
 
         for stream in self.streams:
 
@@ -159,10 +173,15 @@ class MediaObject:
             self.duration = float(json.loads(self.ffprobeOut)['format']['duration'])
 
         except KeyError:
-            print("Extracting duration from video stream...")
-            print("\t"+self.filePath)
-            self.duration = timecode_to_seconds(json.loads(self.ffprobeOut)['streams'][0]['tags']['DURATION'])
-            print("Extracted duration is {}\n".format(self.duration))
+            try:  # Try getting duration from video stream
+                print("Extracting duration from video stream...")
+                print("\t"+self.filePath)
+                self.duration = timecode_to_seconds(json.loads(self.ffprobeOut)['streams'][0]['tags']['DURATION'])
+                print("Extracted duration is {}\n".format(self.duration))
+
+            except KeyError:
+                print("\tDuration couldn't be found in file meta-info or video stream! Defaulting to a duration of -1.0!")
+
 
         i = 0
         for stream in ffProbeInfo.streams:

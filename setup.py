@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 setup(
     name="tympeg",
-    version="0.2.6",
+    version="0.2.8",
     packages=find_packages(),
     scripts=[],
 
