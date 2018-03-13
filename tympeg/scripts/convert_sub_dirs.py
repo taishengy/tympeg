@@ -145,7 +145,7 @@ def convert_folder_x265(dir_path, qualities, speed, autodelete=False, log=True):
             count += 1
             total_input_size -= media_size
             continue
-        lo.pl("...converting...")
+        lo.pl("\t...converting...")
         print("Using profile")
 
         cvt = MediaConverter(media, output_file_path)
