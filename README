@@ -1,14 +1,23 @@
 A python3 wrapper for ffmpeg. Focused on scripting video file conversions.
 
 This wrapper helps parse information about media files with ffprobe, and does it's transcoding
-through ffmpeg. 
+through ffmpeg.
 
 Currently has strong support for:
   Stream metadata and analysis
-  Converting files progmattically
+  Converting files to new formats/encodings
+    Audio: aac (aac and libaac_fdk), mp3 (libmp3lame), flac, opus, vorbis, and copy
+    Video: x264, x265, vp8, vp9, and copy
+    Stream exclusion
   Snipping clips out of video files
+    Clipped segments can be encoded with any encoder or stream copied
   Concatenating video files
-  Saving HLS streams to disk
+    Tested with h264 formats and HLS .ts streams
+  Saving HLS and other network streams to disk
+    See streamsaver.py, well tested but no examples are included here
+
+Several helper functions for converting whole directories of video files, time code manipulation, path name
+manipulation/listing and the like are included from the get go.
 
 Look through the pympeg_examples.py, tools.py, and some of the scripts for pragmatic examples of varying complexities.
 
